@@ -88,6 +88,10 @@ export interface HermesAgentNotesSettings {
   conventions: VaultConventions | null;
   connection: ConnectionState | null;
   availableModels: string[];
+
+  // --- Persistence --------------------------------------------------------
+  /** Mirror the settings to a backup file next to the plugin on every change. */
+  autoBackup: boolean;
 }
 
 export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
@@ -117,4 +121,6 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   conventions: null,
   connection: null,
   availableModels: [],
+
+  autoBackup: true,
 };

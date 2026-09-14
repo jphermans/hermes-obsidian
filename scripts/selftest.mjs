@@ -483,6 +483,76 @@ test("mergeHeaderLines adds missing headers once and keeps existing ones", () =>
   assert.equal(hermes.mergeHeaderLines("", []).text, "");
 });
 
+// --- settings persistence ------------------------------------------------
+
+test("exportableSettings keeps settings and drops caches", () => {
+  const exported = hermes.exportableSettings(
+    Object.assign({}, hermes.DEFAULT_SETTINGS, {
+      baseUrl: "https://h.example.com",
+      conventions: { at: 1, unknown: true },
+      connection: { ok: true },
+      availableModels: ["x"],
+    })
+  );
+  assert.equal(exported.baseUrl, "https://h.example.com");
+  assert.equal(exported.plugin, "hermes-agent-notes");
+  assert.equal(typeof exported.exportedAt, "string");
+  assert.equal(exported.autoBackup, true);
+  for (const key of ["conventions", "connection", "availableModels"]) {
+    assert.ok(!(key in exported), key + " must not be exported");
+  }
+});
+
+test("mergeImportedSettings applies sane values and reports the rest", () => {
+  const current = Object.assign({}, hermes.DEFAULT_SETTINGS);
+  const result = hermes.mergeImportedSettings(current, {
+    baseUrl: "https://hermes.example.com",
+    apiKey: "k",
+    deep: { a: 1 },
+    model: 5,
+    streaming: "yes",
+    conventions: { at: 1 },
+    plugin: "hermes-agent-notes",
+    exportedAt: "2026-01-01",
+  });
+  assert.equal(result.settings.baseUrl, "https://hermes.example.com");
+  assert.equal(result.settings.apiKey, "k");
+  assert.ok(result.applied.includes("baseUrl"));
+  assert.ok(!result.applied.includes("plugin"), "the marker is not a setting");
+  assert.ok(result.ignored.includes("deep"), "unknown keys are ignored");
+  assert.ok(result.ignored.includes("conventions"), "caches are ignored");
+  assert.ok(result.errors.some((entry) => entry.indexOf("model") === 0), result.errors.join("; "));
+  assert.ok(result.errors.some((entry) => entry.indexOf("streaming") === 0));
+  assert.equal(result.settings.model, hermes.DEFAULT_SETTINGS.model, "a wrong type must not be applied");
+  assert.equal(current.baseUrl, "http://127.0.0.1:8642", "the source settings object must not be mutated");
+
+  const junk = hermes.mergeImportedSettings(current, "just a string");
+  assert.equal(junk.applied.length, 0);
+  assert.ok(junk.errors.length > 0);
+  assert.equal(junk.settings.baseUrl, current.baseUrl);
+});
+
+test("a loopback URL is refused on mobile, allowed on desktop", () => {
+  const message = hermes.loopbackBlockMessage("http://127.0.0.1:8642", true);
+  assert.ok(message.length > 0);
+  assert.ok(/points at this phone/.test(message), message);
+  assert.ok(hermes.loopbackBlockMessage("http://localhost:8642", true).length > 0);
+  assert.ok(hermes.loopbackBlockMessage("127.0.0.1:8642", true).length > 0, "no scheme still counts");
+  assert.equal(hermes.loopbackBlockMessage("http://127.0.0.1:8642", false), "", "desktop may use loopback");
+  assert.equal(hermes.loopbackBlockMessage("https://hermes.example.com", true), "", "a remote route is fine on mobile");
+  assert.equal(hermes.loopbackBlockMessage("http://192.168.1.10:8642", true), "", "a LAN address is not loopback");
+  assert.equal(hermes.loopbackBlockMessage("", true), "");
+});
+
+test("settings file paths are predictable", () => {
+  assert.equal(hermes.settingsBackupPath("hermes-agent-notes"), ".obsidian/plugins/hermes-agent-notes/settings-backup.json");
+  assert.equal(hermes.settingsBackupPath("hermes-agent-notes/"), ".obsidian/plugins/hermes-agent-notes/settings-backup.json");
+  assert.equal(hermes.settingsBackupPath(""), ".obsidian/plugins/hermes-agent-notes/settings-backup.json");
+  assert.equal(hermes.settingsExportPath(""), "Hermes Agent Notes settings.json");
+  assert.equal(hermes.settingsExportPath("13.00 AI"), "13.00 AI/Hermes Agent Notes settings.json");
+  assert.equal(hermes.settingsExportPath("/13.00 AI/"), "13.00 AI/Hermes Agent Notes settings.json");
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

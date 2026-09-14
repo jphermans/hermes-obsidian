@@ -125,6 +125,54 @@ await test("the vault scan feeds the prompt without leaving the vault", async ()
   assert.equal(cached.at, conventions.at, "the scan should be cached");
 });
 
+await test("settings survive a wiped plugin folder via the automatic backup", async () => {
+  const plugin = await makePlugin({ autoBackup: false });
+  plugin.settings.baseUrl = "https://hermes.example.com";
+  plugin.settings.apiKey = "secret-key";
+  plugin.settings.extraHeaders = "CF-Access-Client-Id: x";
+  await plugin.writeBackup();
+
+  const path = plugin.backupPath();
+  assert.equal(path, ".obsidian/plugins/hermes-agent-notes/settings-backup.json");
+  assert.ok(await app.vault.adapter.exists(path), "no backup file was written");
+  const backup = JSON.parse(await app.vault.adapter.read(path));
+  assert.equal(backup.baseUrl, "https://hermes.example.com");
+  assert.equal(backup.apiKey, "secret-key");
+  assert.equal("conventions" in backup, false, "caches must not be backed up");
+
+  // simulate the plugin data being lost, then restore
+  plugin.settings = Object.assign({}, hermes.DEFAULT_SETTINGS);
+  assert.equal(plugin.settings.baseUrl, "http://127.0.0.1:8642");
+  await plugin.restoreFromBackup();
+  assert.equal(plugin.settings.baseUrl, "https://hermes.example.com");
+  assert.equal(plugin.settings.apiKey, "secret-key");
+  assert.equal(plugin.settings.extraHeaders, "CF-Access-Client-Id: x");
+});
+
+await test("export writes a visible settings file into the vault", async () => {
+  const plugin = await makePlugin();
+  plugin.settings.defaultFolder = "13.00 AI";
+  const path = await plugin.exportSettings();
+  assert.equal(path, "13.00 AI/Hermes Agent Notes settings.json");
+  const exported = JSON.parse(await app.vault.adapter.read(path));
+  assert.equal(exported.plugin, "hermes-agent-notes");
+  assert.equal(typeof exported.exportedAt, "string");
+  assert.equal(exported.baseUrl, server.baseUrl);
+  assert.equal(exported.apiKey, "test-key");
+});
+
+await test("the automatic backup fires after a change, debounced", async () => {
+  const plugin = await makePlugin({ autoBackup: true });
+  const path = plugin.backupPath();
+  await app.vault.adapter.remove(path);
+  assert.equal(await app.vault.adapter.exists(path), false);
+  plugin.settings.model = "hermes-agent";
+  await plugin.saveSettings();
+  await new Promise((resolve) => setTimeout(resolve, 1600));
+  assert.ok(await app.vault.adapter.exists(path), "the debounced backup never ran");
+  assert.ok(plugin.lastBackupAt > 0, "lastBackupAt was not recorded");
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");

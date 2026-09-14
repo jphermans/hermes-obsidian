@@ -17,6 +17,7 @@ import { AnswerModal } from "./ui/answer-modal";
 import { ConventionsModal } from "./ui/conventions-modal";
 import {
   applyFilenameStyle,
+  ensureFolder,
   extractNote,
   mergeFrontmatter,
   sanitizeFilename,
@@ -25,6 +26,13 @@ import {
   uniquePath,
   writeNote,
 } from "./note-writer";
+import {
+  exportableSettings,
+  mergeImportedSettings,
+  settingsBackupPath,
+  settingsExportPath,
+} from "./settings-file";
+import { JsonFileSuggestModal } from "./ui/file-suggest";
 import {
   conventionsReport,
   defaultFrontmatterTemplate,
@@ -55,6 +63,8 @@ export default class HermesAgentNotesPlugin extends Plugin {
   private sessionId = "";
   private scanPromise: Promise<VaultConventions | null> | null = null;
   private statusBarEl: HTMLElement | null = null;
+  private backupTimer: ReturnType<typeof setTimeout> | null = null;
+  lastBackupAt = 0;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -161,8 +171,95 @@ export default class HermesAgentNotesPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    this.scheduleBackup();
     this.refreshStatusBar();
     this.refreshViews();
+  }
+
+  // --- settings persistence ------------------------------------------------
+
+  private scheduleBackup(): void {
+    if (!this.settings.autoBackup) return;
+    if (this.backupTimer !== null) clearTimeout(this.backupTimer);
+    this.backupTimer = setTimeout(() => {
+      this.backupTimer = null;
+      void this.writeBackup();
+    }, 1200);
+  }
+
+  backupPath(): string {
+    return settingsBackupPath(this.manifest.id);
+  }
+
+  /** Mirrors the settings next to the plugin, so a wiped folder is recoverable. */
+  async writeBackup(): Promise<void> {
+    try {
+      const path = this.backupPath();
+      await this.app.vault.adapter.write(path, JSON.stringify(exportableSettings(this.settings), null, 2) + "\n");
+      this.lastBackupAt = Date.now();
+    } catch (error) {
+      console.warn("[Hermes Agent Notes] settings backup failed", error);
+    }
+  }
+
+  /** Writes a visible settings file into the vault and returns its path. */
+  async exportSettings(): Promise<string> {
+    const path = settingsExportPath(this.settings.defaultFolder);
+    const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    if (folder) await ensureFolder(this.app, folder);
+    await this.app.vault.adapter.write(path, JSON.stringify(exportableSettings(this.settings), null, 2) + "\n");
+    return path;
+  }
+
+  async restoreFromBackup(): Promise<void> {
+    const path = this.backupPath();
+    try {
+      if (!(await this.app.vault.adapter.exists(path))) {
+        new Notice("No automatic backup yet — it appears at " + path + " after the first settings change.", 8000);
+        return;
+      }
+      const raw = await this.app.vault.adapter.read(path);
+      await this.applyImportedSettings(JSON.parse(raw), "the automatic backup");
+    } catch (error) {
+      new Notice("Could not read the automatic backup: " + (error instanceof Error ? error.message : String(error)), 10000);
+    }
+  }
+
+  async restoreFromFile(): Promise<void> {
+    const files = this.app.vault.getFiles().filter((file) => file.extension === "json");
+    if (files.length === 0) {
+      new Notice("No JSON files in this vault to restore from.");
+      return;
+    }
+    new JsonFileSuggestModal(this.app, files, (file) => {
+      void (async () => {
+        try {
+          const raw = await this.app.vault.read(file);
+          await this.applyImportedSettings(JSON.parse(raw), file.path);
+        } catch (error) {
+          new Notice("Could not read " + file.path + ": " + (error instanceof Error ? error.message : String(error)), 10000);
+        }
+      })();
+    }).open();
+  }
+
+  private async applyImportedSettings(raw: unknown, source: string): Promise<void> {
+    const result = mergeImportedSettings(this.settings, raw);
+    if (result.applied.length === 0) {
+      new Notice(
+        "Nothing restored from " + source + (result.errors.length > 0 ? ": " + result.errors.join("; ") : " — no known settings in that file."),
+        12000
+      );
+      return;
+    }
+    this.settings = result.settings;
+    await this.saveSettings();
+    new Notice(
+      "Restored " + result.applied.length + " setting" + (result.applied.length === 1 ? "" : "s") + " from " + source +
+        (result.errors.length > 0 ? " — skipped: " + result.errors.join("; ") : "") +
+        (result.ignored.length > 0 ? " (" + result.ignored.length + " unrecognised key(s) ignored)" : ""),
+      9000
+    );
   }
 
   // --- labels --------------------------------------------------------------

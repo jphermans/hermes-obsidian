@@ -44,6 +44,24 @@ export function makeApp(files: FakeFile[]) {
     getName: () => "TestVault",
     getAbstractFileByPath: find,
     getMarkdownFiles: () => store.filter((entry) => entry.extension === "md").slice(),
+    getFiles: () => store.slice(),
+    adapter: {
+      files: new Map(),
+      async write(path, data) {
+        this.files.set(path, data);
+      },
+      async read(path) {
+        if (!this.files.has(path)) throw new Error("ENOENT: " + path);
+        return this.files.get(path);
+      },
+      async exists(path) {
+        return this.files.has(path);
+      },
+      async remove(path) {
+        this.files.delete(path);
+      },
+      async mkdir() {},
+    },
     read: async (file: TFile) => (file as unknown as { content: string }).content,
     cachedRead: async (file: TFile) => (file as unknown as { content: string }).content,
     modify: async (file: TFile, content: string) => {

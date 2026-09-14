@@ -294,6 +294,25 @@ export class MarkdownRenderer {
   static async renderMarkdown() {}
 }
 
+export class FuzzySuggestModal extends Modal {
+  emptyStateText = "";
+  setPlaceholder() {
+    return this;
+  }
+  setInstructions() {
+    return this;
+  }
+  getItems() {
+    return [];
+  }
+  getItemText() {
+    return "";
+  }
+  onChooseItem() {}
+}
+
+export class SuggestModal extends FuzzySuggestModal {}
+
 export class PluginSettingTab {
   constructor(app, plugin) {
     this.app = app;

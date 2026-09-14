@@ -2,6 +2,7 @@ import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type HermesAgentNotesPlugin from "./main";
 import { cleartextWarning, describeError, endpointsFor, obsidianOrigins } from "./hermes-client";
 import { REMOTE_PRESETS, mergeHeaderLines, presetFor } from "./remote";
+import { loopbackBlockMessage } from "./settings-file";
 import type { AccessMode } from "./types";
 import { copyText } from "./ui/clipboard";
 import { listFolders } from "./vault-rules";
@@ -45,6 +46,7 @@ export class HermesSettingTab extends PluginSettingTab {
     this.renderPromptTest(containerEl);
     this.renderNotes(containerEl);
     this.renderConventions(containerEl);
+    this.renderSettingsFile(containerEl);
     this.renderGuide(containerEl);
   }
 
@@ -91,10 +93,14 @@ export class HermesSettingTab extends PluginSettingTab {
     chat.addEventListener("click", () => void this.plugin.activateChatView());
 
     const unreachable = cleartextWarning(endpointsFor(this.plugin.settings.baseUrl, this.plugin.settings.profile).v1);
-    if (unreachable) {
+    const loopbackOnMobile = loopbackBlockMessage(this.plugin.settings.baseUrl, Platform.isMobile);
+    if (unreachable || loopbackOnMobile) {
       const warn = containerEl.createDiv({ cls: "hermes-callout hermes-callout-warn" });
-      warn.createEl("p", { text: unreachable });
+      warn.createEl("p", { text: loopbackOnMobile || unreachable });
     }
+
+    let urlError: HTMLElement | null = null;
+    let blockedUrl = "";
 
     new Setting(containerEl)
       .setName("API server URL")
@@ -105,11 +111,31 @@ export class HermesSettingTab extends PluginSettingTab {
           .setPlaceholder("http://127.0.0.1:8642")
           .setValue(this.plugin.settings.baseUrl)
           .onChange((value) => {
-            this.plugin.settings.baseUrl = value.trim();
+            const trimmed = value.trim();
+            const blocked = loopbackBlockMessage(trimmed, Platform.isMobile);
+            if (blocked && urlError) {
+              // Keep what was typed on screen, but do not store it: on a phone this
+              // address points at the phone itself, so nothing could ever reach Hermes.
+              blockedUrl = trimmed;
+              urlError.empty();
+              urlError.createEl("p", { text: blocked });
+              const saveAnyway = urlError.createEl("button", { text: "Save anyway — Hermes runs on this device" });
+              saveAnyway.addEventListener("click", () => {
+                this.plugin.settings.baseUrl = blockedUrl;
+                this.plugin.settings.connection = null;
+                void this.plugin.saveSettings().then(() => this.display());
+              });
+              urlError.removeClass("is-hidden");
+              return;
+            }
+            this.plugin.settings.baseUrl = trimmed;
             this.plugin.settings.connection = null;
             void this.plugin.saveSettings();
+            if (urlError) urlError.addClass("is-hidden");
           })
       );
+
+    urlError = containerEl.createDiv({ cls: "hermes-callout hermes-callout-warn is-hidden" });
 
     new Setting(containerEl)
       .setName("Profile prefix")
@@ -647,6 +673,62 @@ export class HermesSettingTab extends PluginSettingTab {
         " · " +
         (Platform.isDesktop ? "desktop" : "mobile") +
         " · docs at hermes-agent.nousresearch.com/docs/user-guide/features/api-server",
+    });
+  }
+
+  // --- settings file -------------------------------------------------------
+
+  private renderSettingsFile(containerEl: HTMLElement): void {
+    containerEl.createEl("h2", { text: "Keeping your settings" });
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text:
+        "Settings are stored in this vault's plugin data. With the automatic backup on they are also mirrored to " +
+        this.plugin.backupPath() +
+        ", so a plugin folder that gets wiped — a reinstall, a sync conflict — can be recovered. Export writes a visible JSON file into the vault; that file contains your API key and any extra headers, so keep it private.",
+    });
+
+    new Setting(containerEl)
+      .setName("Automatic backup file")
+      .setDesc("Mirrors the settings after every change (at most once every 1.2 s).")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.autoBackup).onChange((value) => {
+          this.plugin.settings.autoBackup = value;
+          void this.plugin.saveSettings().then(() => {
+            if (value) void this.plugin.writeBackup();
+          });
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Settings file")
+      .setDesc(
+        "Export writes " +
+          this.plugin.settings.defaultFolder +
+          (this.plugin.settings.defaultFolder ? "/" : "") +
+          "Hermes Agent Notes settings.json — restore reads a JSON file you pick, or the automatic backup."
+      )
+      .addButton((button) =>
+        button.setButtonText("Export to the vault").onClick(() => {
+          button.setButtonText("Exporting…");
+          void this.plugin
+            .exportSettings()
+            .then((path) => new Notice("Settings written to " + path, 9000))
+            .catch((error) => new Notice("Export failed: " + describeError(error), 10000))
+            .finally(() => {
+              button.setButtonText("Export to the vault");
+              this.display();
+            });
+        })
+      )
+      .addButton((button) => button.setButtonText("Restore from a file…").onClick(() => void this.plugin.restoreFromFile()))
+      .addButton((button) => button.setButtonText("Restore automatic backup").onClick(() => void this.plugin.restoreFromBackup()));
+
+    containerEl.createEl("p", {
+      cls: "hermes-notes-path",
+      text: this.plugin.lastBackupAt
+        ? "Last automatic backup this session: " + new Date(this.plugin.lastBackupAt).toLocaleTimeString()
+        : "No automatic backup written yet in this session.",
     });
   }
 

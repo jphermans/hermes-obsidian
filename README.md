@@ -24,6 +24,7 @@ Hermes runs on your machine or on a server you own. The plugin talks to its Open
 - [Following Obsidian's rules](#following-obsidians-rules)
 - [Mobile](#mobile)
 - [Data, privacy and safety](#data-privacy-and-safety)
+- [Settings file and backup](#settings-file-and-backup)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [Releasing (BRAT)](#releasing-brat)
@@ -92,10 +93,12 @@ The first returns `{"status": "ok"}`; the second lists the agent as a model. A `
 
 | Field | Value |
 | --- | --- |
-| API server URL | `http://127.0.0.1:8642` (no `/v1` suffix) |
+| API server URL | `http://127.0.0.1:8642` (no `/v1` suffix; a port is optional) |
 | API key | the same value as `API_SERVER_KEY` |
 | Model | leave `hermes-agent` — Hermes normally uses its own configured default |
 | Profile prefix | only when the gateway serves several profiles |
+
+On a phone or tablet, `127.0.0.1` / `localhost` cannot be saved: that address points at the phone itself. Use the https:// address of your Tailscale, Cloudflare Tunnel or ngrok route (see below), or press *Save anyway* if Hermes really runs on that device.
 
 Press **Test connection**. A green card with the advertised model name means you are connected.
 
@@ -206,6 +209,19 @@ The vault-convention scan reads from Obsidian's cache and takes ~20 ms on a 585-
 * The plugin never touches a note you did not ask it to change, and every write goes through the preview.
 * Requests go only to the Hermes URL you configure. Session reporting is opt-in and exists so long runs appear in Hermes session history.
 
+## Settings file and backup
+
+Settings normally live in `<vault>/.obsidian/plugins/hermes-agent-notes/data.json`. Two extra files keep them safe:
+
+| File | Where | Purpose |
+| --- | --- | --- |
+| Automatic backup | `.obsidian/plugins/hermes-agent-notes/settings-backup.json` | Written (debounced, ~1.2 s) after every settings change when *Automatic backup file* is on — the default. Recovers your setup if the plugin folder is wiped by a reinstall or a sync conflict. |
+| Exported settings | `<default folder>/Hermes Agent Notes settings.json` | Written only when you press **Export to the vault**. A visible file you can read, version or move between machines. |
+
+**Restore** — either pick a JSON file from the vault (**Restore from a file…**) or read the automatic backup back (**Restore automatic backup**). Imports are validated: unknown keys and values of the wrong type are skipped and reported in the notice, so a stale or hand-edited file cannot half-break your setup. Caches (the vault analysis, the last connection state) are never exported or imported — they are rebuilt.
+
+Both files contain your **API key and any extra headers** in plain text, because that is the point of a backup. Keep the vault (and anything synced from it) private, or export to a folder you control.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -217,6 +233,7 @@ The vault-convention scan reads from Obsidian's cache and takes ~20 ms on a 585-
 | **No model in the dropdown** | Harmless: `/v1/models` advertises one agent name. Press *Test connection* and use that name. |
 | **Streaming was refused** | Add the `API_SERVER_CORS_ORIGINS` line above and restart the gateway, or turn streaming off. |
 | **Phone cannot reach the instance at all** | Plain HTTP to another machine is blocked on mobile. Use HTTPS — Tailscale, Cloudflare Tunnel or a TLS reverse proxy. Loopback (`http://127.0.0.1:…`, Hermes running on the same device) is the one exception. |
+| **On a phone, `127.0.0.1` / `localhost` will not save** | Deliberate: on a phone that address points at the phone itself, so nothing could reach Hermes. Use your Tailscale/Cloudflare/ngrok URL. If Hermes really does run on that device (Termux on Android), press *Save anyway* under the field. |
 | **HTTP 403 behind Cloudflare Access** | Add the `CF-Access-Client-Id` / `CF-Access-Client-Secret` service token headers under *Extra request headers*. |
 | **The note ignores my model choice** | Hermes uses its own default model unless you also set a **provider override** (or enable `gateway.platforms.api_server.direct_model_requests` on the host). |
 | **Notes do not match my style** | Run **Show detected vault conventions** to see what was inferred, raise *Notes to analyse*, then rescan. |
