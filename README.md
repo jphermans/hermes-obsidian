@@ -100,6 +100,8 @@ The first returns `{"status": "ok"}`; the second lists the agent as a model. A `
 
 On a phone or tablet, `127.0.0.1` / `localhost` cannot be saved: that address points at the phone itself. Use the https:// address of your Tailscale, Cloudflare Tunnel or ngrok route (see below), or press *Save anyway* if Hermes really runs on that device.
 
+Two timeouts keep the plugin responsive: **Connection check timeout** (15 s default) covers `/health`, `/v1/models` and `/v1/capabilities`, and **Answer timeout** (5 min default, `0` = unlimited) covers a full answer, since agent turns can legitimately take minutes.
+
 Press **Test connection**. A green card with the advertised model name means you are connected.
 
 Then type a prompt in **Ask Hermes** (just below the connection fields) and press *Send to Hermes*: the answer appears in place, with the model, the round-trip time and whether it streamed. That goes through the plugin's normal path — Obsidian rules, your vault conventions, session headers — so it proves the whole chain works, not just that the port is open. It writes nothing to the vault, and it is the quickest way to check a new route from a phone. Four sample prompts are one click away, including *Describe my vault's style*, which shows whether the vault scan reached Hermes.
@@ -235,6 +237,7 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **Phone cannot reach the instance at all** | Plain HTTP to another machine is blocked on mobile. Use HTTPS — Tailscale, Cloudflare Tunnel or a TLS reverse proxy. Loopback (`http://127.0.0.1:…`, Hermes running on the same device) is the one exception. |
 | **On a phone, `127.0.0.1` / `localhost` will not save** | Deliberate: on a phone that address points at the phone itself, so nothing could reach Hermes. Use your Tailscale/Cloudflare/ngrok URL. If Hermes really does run on that device (Termux on Android), press *Save anyway* under the field. |
 | **HTTP 403 behind Cloudflare Access** | Add the `CF-Access-Client-Id` / `CF-Access-Client-Secret` service token headers under *Extra request headers*. |
+| **Fetch models / Test connection hangs and the page looks frozen** | Fixed by the **Connection check timeout** (default 15 s) — no request can hang forever any more. Raise it if your instance is just slow, or check the URL and that the gateway is up. |
 | **The note ignores my model choice** | Hermes uses its own default model unless you also set a **provider override** (or enable `gateway.platforms.api_server.direct_model_requests` on the host). |
 | **Notes do not match my style** | Run **Show detected vault conventions** to see what was inferred, raise *Notes to analyse*, then rescan. |
 

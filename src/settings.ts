@@ -211,20 +211,29 @@ export class HermesSettingTab extends PluginSettingTab {
             void this.plugin.saveSettings();
           })
       )
-      .addButton((button) =>
+      .addButton((button) => {
+        let busy = false;
         button.setButtonText("Fetch models").onClick(() => {
+          if (busy) {
+            new Notice("Still waiting for Hermes — this request gives up on its own, check the timeout below.", 6000);
+            return;
+          }
+          busy = true;
           button.setButtonText("Fetching…");
           void this.plugin
             .fetchModels()
             .then((models) => {
               if (models.length === 0) new Notice("Hermes did not advertise any model name.");
               else new Notice("Advertised model names: " + models.join(", "), 8000);
-              this.display();
             })
-            .catch((error) => new Notice("Could not list models: " + describeError(error), 10000))
-            .finally(() => button.setButtonText("Fetch models"));
-        })
-      );
+            .catch((error) => new Notice("Could not list models: " + describeError(error), 12000))
+            .finally(() => {
+              busy = false;
+              button.setButtonText("Fetch models");
+              this.display();
+            });
+        });
+      });
 
     if (this.plugin.settings.availableModels.length > 0) {
       new Setting(containerEl)
@@ -301,6 +310,36 @@ export class HermesSettingTab extends PluginSettingTab {
           .setDynamicTooltip()
           .onChange((value) => {
             this.plugin.settings.temperature = value;
+            void this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Connection check timeout")
+      .setDesc(
+        "Seconds to wait for /health, /v1/models and /v1/capabilities before reporting a timeout. This is what stops the settings page hanging on an address that never answers."
+      )
+      .addSlider((slider) =>
+        slider
+          .setLimits(3, 120, 1)
+          .setValue(Math.round(this.plugin.settings.probeTimeoutMs / 1000))
+          .setDynamicTooltip()
+          .onChange((value) => {
+            this.plugin.settings.probeTimeoutMs = value * 1000;
+            void this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Answer timeout")
+      .setDesc("Seconds to wait for a full answer. Agent turns can legitimately take minutes; 0 waits forever.")
+      .addSlider((slider) =>
+        slider
+          .setLimits(0, 1800, 15)
+          .setValue(Math.round(this.plugin.settings.chatTimeoutMs / 1000))
+          .setDynamicTooltip()
+          .onChange((value) => {
+            this.plugin.settings.chatTimeoutMs = value * 1000;
             void this.plugin.saveSettings();
           })
       );

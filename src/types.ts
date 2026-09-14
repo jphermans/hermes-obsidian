@@ -65,6 +65,10 @@ export interface HermesAgentNotesSettings {
   provider: string;
   /** -1 = do not send a temperature at all. */
   temperature: number;
+  /** Seconds-scale limit for /health, /v1/models and /v1/capabilities. */
+  probeTimeoutMs: number;
+  /** Limit for a full answer; agent turns can take minutes. 0 = wait forever. */
+  chatTimeoutMs: number;
   /** SSE streaming needs browser CORS on the Hermes side; off = safe everywhere. */
   streaming: boolean;
   /** Scope Hermes long-term memory / session history to this vault. */
@@ -103,6 +107,8 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   model: "hermes-agent",
   provider: "",
   temperature: -1,
+  probeTimeoutMs: 15000,
+  chatTimeoutMs: 300000,
   streaming: false,
   reportSession: true,
 

@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import * as hermes from "./.build/tests.mjs";
+import { startMockServer } from "./mock-hermes-server.mjs";
 
 const KEY = "test-key";
 const FULL_ANSWER = "# Kitchen renovation\n\nBody text with [[Boiler service]].";
@@ -253,6 +254,53 @@ await test("a profile prefix routes to /p/<profile>/v1", async () => {
 await test("normalizeBaseUrl tolerates a pasted /v1 URL", async () => {
   const { client } = makeClient({ baseUrl: baseUrl + "/v1" });
   assert.deepEqual(await client.models(), ["hermes-agent"]);
+});
+
+await test("a slow server times out instead of hanging the UI", async () => {
+  const slow = await startMockServer({ key: KEY, delayMs: 1200 });
+  try {
+    const client = new hermes.HermesClient(
+      Object.assign({}, hermes.DEFAULT_SETTINGS, { baseUrl: slow.baseUrl, apiKey: KEY, probeTimeoutMs: 250 })
+    );
+    const started = Date.now();
+    await assert.rejects(
+      () => client.models(),
+      (error) => {
+        assert.equal(error.kind, "timeout", "expected a timeout error, got " + error.kind);
+        assert.ok(/did not answer within/.test(error.message), error.message);
+        return true;
+      }
+    );
+    assert.ok(Date.now() - started < 900, "the client waited far too long");
+  } finally {
+    slow.close();
+  }
+});
+
+await test("answers that arrive inside the deadline are not affected", async () => {
+  const slow = await startMockServer({ key: KEY, delayMs: 120 });
+  try {
+    const client = new hermes.HermesClient(
+      Object.assign({}, hermes.DEFAULT_SETTINGS, { baseUrl: slow.baseUrl, apiKey: KEY, probeTimeoutMs: 1500, chatTimeoutMs: 2000 })
+    );
+    assert.deepEqual(await client.models(), ["hermes-agent"]);
+    const result = await client.chat([{ role: "user", content: "hi" }]);
+    assert.equal(result.content, slow.answer);
+  } finally {
+    slow.close();
+  }
+});
+
+await test("a disabled timeout waits for a slow answer (0 = unlimited)", async () => {
+  const slow = await startMockServer({ key: KEY, delayMs: 300 });
+  try {
+    const client = new hermes.HermesClient(
+      Object.assign({}, hermes.DEFAULT_SETTINGS, { baseUrl: slow.baseUrl, apiKey: KEY, probeTimeoutMs: 0 })
+    );
+    assert.deepEqual(await client.models(), ["hermes-agent"]);
+  } finally {
+    slow.close();
+  }
 });
 
 server.close();

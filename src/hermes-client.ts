@@ -39,6 +39,7 @@ export type HermesErrorKind =
   | "rate-limit"
   | "server"
   | "client"
+  | "timeout"
   | "aborted";
 
 export class HermesError extends Error {
@@ -222,6 +223,39 @@ function isAbortError(err: unknown): boolean {
   return name === "AbortError";
 }
 
+function timeoutError(label: string, ms: number): HermesError {
+  return new HermesError(
+    "Hermes did not answer within " +
+      Math.round(ms / 1000) +
+      " s (" +
+      label +
+      "). The address may be unreachable, or something is dropping the connection without refusing it. Raise the timeout in the plugin settings if this instance is simply slow.",
+    "timeout"
+  );
+}
+
+/**
+ * Obsidian's requestUrl has no timeout, so a host that swallows packets would
+ * leave the promise pending forever and the settings page stuck on "Fetching…".
+ * Racing a timer guarantees the UI recovers; the abandoned request is ignored.
+ * ms <= 0 disables the limit.
+ */
+export async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  if (!ms || ms <= 0) return work;
+  work.catch(() => undefined); // the abandoned request must not raise an unhandled rejection
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => reject(timeoutError(label, ms)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
+
 function httpError(status: number, body: string, url: string): HermesError {
   const detail = firstLine(body) || "no response body";
   if (status === 401 || status === 403) {
@@ -324,12 +358,17 @@ export class HermesClient {
     return headers;
   }
 
-  private async getJson(path: string): Promise<{ status: number; text: string; json: any }> {
+  private async getJson(path: string, label: string): Promise<{ status: number; text: string; json: any }> {
     const url = this.url(path);
     let res;
     try {
-      res = await requestUrl({ url, method: "GET", headers: this.headers(), throw: false });
+      res = await withTimeout(
+        requestUrl({ url, method: "GET", headers: this.headers(), throw: false }),
+        this.settings.probeTimeoutMs,
+        label + " " + path
+      );
     } catch (err) {
+      if (err instanceof HermesError) throw err;
       throw networkError(err, url);
     }
     let json: any = null;
@@ -343,7 +382,7 @@ export class HermesClient {
 
   /** GET /health — cheap liveness probe, no auth required. */
   async health(): Promise<{ ok: boolean; status: number; detail: string }> {
-    const res = await this.getJson("/health");
+    const res = await this.getJson("/health", "GET");
     const ok = res.status === 200;
     const status = res.json && typeof res.json.status === "string" ? res.json.status : null;
     return {
@@ -355,7 +394,7 @@ export class HermesClient {
 
   /** GET /v1/models — the agent advertises itself as a model. */
   async models(): Promise<string[]> {
-    const res = await this.getJson("/v1/models");
+    const res = await this.getJson("/v1/models", "GET");
     if (res.status >= 400) throw httpError(res.status, res.text, this.url("/v1/models"));
     const data = res.json && Array.isArray(res.json.data) ? res.json.data : [];
     return data
@@ -365,7 +404,7 @@ export class HermesClient {
 
   /** GET /v1/capabilities — Hermes-native feature flags. */
   async capabilities(): Promise<any> {
-    const res = await this.getJson("/v1/capabilities");
+    const res = await this.getJson("/v1/capabilities", "GET");
     if (res.status >= 400) throw httpError(res.status, res.text, this.url("/v1/capabilities"));
     return res.json;
   }
@@ -391,14 +430,19 @@ export class HermesClient {
     const url = this.endpoints().v1 + "/chat/completions";
     let res;
     try {
-      res = await requestUrl({
-        url,
-        method: "POST",
-        headers: this.headers(this.sessionHeaders(options)),
-        body: JSON.stringify(this.payload(messages, options, false)),
-        throw: false,
-      });
+      res = await withTimeout(
+        requestUrl({
+          url,
+          method: "POST",
+          headers: this.headers(this.sessionHeaders(options)),
+          body: JSON.stringify(this.payload(messages, options, false)),
+          throw: false,
+        }),
+        this.settings.chatTimeoutMs,
+        "POST /v1/chat/completions"
+      );
     } catch (err) {
+      if (err instanceof HermesError) throw err;
       throw networkError(err, url);
     }
     if (res.status >= 400) throw httpError(res.status, res.text, url);
@@ -418,11 +462,38 @@ export class HermesClient {
   }
 
   /**
-   * POST /v1/chat/completions with stream:true over fetch + SSE.
-   * Throws a network error (with the CORS hint) when the browser transport is
-   * blocked; callers fall back to `chat()`.
+   * POST /v1/chat/completions with stream:true over fetch + SSE, with a hard
+   * deadline so a silent stream cannot leave the UI waiting forever. Throws a
+   * network error (with the CORS hint) when the browser transport is blocked;
+   * callers fall back to `chat()`.
    */
   async chatStream(
+    messages: ChatMessage[],
+    options: ChatOptions,
+    onDelta: (delta: string, full: string) => void
+  ): Promise<ChatResult> {
+    const timeoutMs = this.settings.chatTimeoutMs;
+    const controller = options.signal ? null : new AbortController();
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (controller && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, timeoutMs);
+    }
+    try {
+      const scoped = controller ? Object.assign({}, options, { signal: controller.signal }) : options;
+      return await this.streamInto(messages, scoped, onDelta);
+    } catch (error) {
+      if (timedOut) throw timeoutError("streaming POST /v1/chat/completions", timeoutMs);
+      throw error;
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
+  }
+
+  private async streamInto(
     messages: ChatMessage[],
     options: ChatOptions,
     onDelta: (delta: string, full: string) => void
