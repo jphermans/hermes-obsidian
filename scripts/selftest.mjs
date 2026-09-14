@@ -632,6 +632,235 @@ test("questions and edits of the open note are not new-note requests", () => {
   }
 });
 
+// --- mentions --------------------------------------------------------------
+
+test("a mention being typed is found at the cursor", () => {
+  assert.deepEqual(hermes.detectMention("Look at @Kit", 12), { start: 8, end: 12, query: "Kit" });
+  assert.deepEqual(hermes.detectMention("@", 1), { start: 0, end: 1, query: "" });
+  assert.deepEqual(hermes.detectMention("@[[Kit", 6), { start: 0, end: 6, query: "Kit" });
+  const full = "@[[Kitchen renovation]]";
+  assert.deepEqual(hermes.detectMention(full, full.length), {
+    start: 0,
+    end: full.length,
+    query: "Kitchen renovation",
+  });
+  assert.deepEqual(hermes.detectMention("@[[Kitchen renovation]] more", 23), {
+    start: 0,
+    end: 23,
+    query: "Kitchen renovation",
+  });
+});
+
+test("a mention stops at whitespace, after the brackets, and inside an email", () => {
+  assert.equal(hermes.detectMention("@Kit chen", 9), null, "space should end the mention");
+  assert.equal(hermes.detectMention("@[[Kit]] and more", 18), null, "cursor after ]] is not a mention");
+  assert.equal(hermes.detectMention("me@example.com", 14), null, "email is not a mention");
+  assert.equal(hermes.detectMention("no mention here", 15), null);
+});
+
+test("completing a mention inserts Obsidian's @[[link]] form", () => {
+  const bare = "See @Kit";
+  const open = hermes.completeMention(bare, hermes.detectMention(bare, bare.length), "Kitchen renovation");
+  assert.equal(open.text, "See @[[Kitchen renovation]] ");
+  assert.equal(open.cursor, open.text.length, "the caret must land after the inserted name");
+
+  const bracketedText = "A @[[Kit]] B";
+  const bracketed = hermes.completeMention(
+    bracketedText,
+    hermes.detectMention(bracketedText, 10),
+    "Kitchen renovation"
+  );
+  assert.equal(bracketed.text, "A @[[Kitchen renovation]] B", "no double space, second ] replaced");
+
+  const middleText = "See @Kit now";
+  const middle = hermes.completeMention(
+    middleText,
+    hermes.detectMention(middleText, 8),
+    "Boiler service"
+  );
+  assert.equal(middle.text, "See @[[Boiler service]] now");
+  assert.equal(middle.cursor, middle.text.length - 4, "the caret stops before the trailing text");
+});
+
+test("mentions are extracted once each, in order", () => {
+  const text = "Compare @[[Kitchen renovation]] with @[[Boiler service]] and @[[Kitchen renovation]]";
+  assert.deepEqual(hermes.extractMentionedTitles(text), ["Kitchen renovation", "Boiler service"]);
+  assert.deepEqual(hermes.extractMentionedTitles("nothing here"), []);
+  assert.deepEqual(hermes.extractMentionedTitles("@[[unclosed"), []);
+});
+
+test("mention syntax is converted to plain wikilinks for the model", () => {
+  assert.equal(
+    hermes.stripMentionSyntax("Compare @[[Kitchen renovation]] and @[[Boiler service]]"),
+    "Compare [[Kitchen renovation]] and [[Boiler service]]"
+  );
+});
+
+const CANDIDATES = [
+  { basename: "Kitchen renovation", path: "House/Kitchen renovation.md" },
+  { basename: "Boiler service", path: "Home/Boiler service.md" },
+  { basename: "Kitchen renovation", path: "Archive/Kitchen renovation.md" },
+];
+
+test("a mentioned title resolves to the right note", () => {
+  assert.equal(hermes.matchMentionedFile(CANDIDATES.slice(0, 2), "Kitchen renovation")?.path, "House/Kitchen renovation.md");
+  assert.equal(hermes.matchMentionedFile(CANDIDATES.slice(0, 2), "kitchen renovation")?.path, "House/Kitchen renovation.md");
+  assert.equal(hermes.matchMentionedFile(CANDIDATES.slice(0, 2), "boiler")?.path, "Home/Boiler service.md");
+  assert.equal(
+    hermes.matchMentionedFile(CANDIDATES.slice(0, 2), "House/Kitchen renovation.md")?.path,
+    "House/Kitchen renovation.md"
+  );
+  assert.equal(hermes.matchMentionedFile(CANDIDATES.slice(0, 2), "nowhere"), null);
+});
+
+test("an ambiguous mention is refused rather than guessed", () => {
+  assert.equal(hermes.matchMentionedFile(CANDIDATES, "Kitchen renovation"), null, "two notes share the name");
+  assert.equal(
+    hermes.matchMentionedFile(CANDIDATES, "Archive/Kitchen renovation.md")?.path,
+    "Archive/Kitchen renovation.md",
+    "a path disambiguates"
+  );
+});
+
+test("note suggestions put prefix matches first and respect the limit", () => {
+  const names = ["Boiler service", "Kitchen renovation", "Kitchen tiling", "Bathroom", "Kitchen lighting"];
+  const some = hermes.suggestNotes(CANDIDATES, "kit");
+  assert.ok(some.length <= 8 && some.length > 0);
+  assert.ok(some.every((file) => /kitchen/i.test(file.basename)), "only matching notes are offered");
+
+  const limited = hermes.suggestNotes(
+    names.map((basename) => ({ basename, path: basename + ".md" })),
+    "kitchen",
+    2
+  );
+  assert.equal(limited.length, 2);
+  assert.deepEqual(
+    limited.map((file) => file.basename).sort(),
+    ["Kitchen lighting", "Kitchen renovation"].sort(),
+    "alphabetical among equal scores"
+  );
+  assert.equal(hermes.suggestNotes(CANDIDATES, "", 2).length, 2, "an empty query offers notes");
+  assert.equal(hermes.suggestNotes(CANDIDATES, "zzz").length, 0);
+});
+
+// --- slash commands --------------------------------------------------------
+
+test("slash commands are recognised only at the start of the line", () => {
+  assert.equal(hermes.isCommandInput("/note"), true);
+  assert.equal(hermes.isCommandInput("/"), true);
+  assert.equal(hermes.isCommandInput("/note kitchen"), false, "the command word is finished");
+  assert.equal(hermes.isCommandInput("hi /note"), false);
+});
+
+test("the command list filters as you type", () => {
+  assert.ok(hermes.filterCommands("/").length >= 8, "an empty query lists everything");
+  assert.deepEqual(hermes.filterCommands("/no").map((command) => command.name), ["note"]);
+  assert.deepEqual(hermes.filterCommands("/zz").length, 0);
+});
+
+test("running a command expands to a message the normal pipeline handles", () => {
+  const note = hermes.runCommand("/note leak in the basement");
+  assert.equal(note.kind, "message");
+  assert.equal(note.text, "Create a new note about: leak in the basement");
+  assert.ok(hermes.looksLikeNewNoteRequest(note.text), "the expanded text must trigger the new-note path");
+
+  const fix = hermes.runCommand("/fix");
+  assert.equal(fix.kind, "message");
+  assert.ok(fix.text.indexOf("Fix the Markdown and Obsidian formatting") === 0, fix.text);
+  assert.ok(fix.text.indexOf("{rest}") < 0, "no placeholder may survive");
+
+  const improve = hermes.runCommand("/improve make it shorter");
+  assert.ok(improve.text.indexOf("shorter") >= 0, improve.text);
+  assert.ok(improve.text.indexOf("{rest}") < 0, improve.text);
+});
+
+test("action commands and unknown commands are told apart", () => {
+  assert.deepEqual(hermes.runCommand("/clear"), { kind: "action", action: "clear", command: hermes.SLASH_COMMANDS[5] });
+  assert.equal(hermes.runCommand("/settings").action, "settings");
+  assert.equal(hermes.runCommand("/help").action, "help");
+  assert.equal(hermes.runCommand("/nope").kind, "unknown");
+  assert.equal(hermes.runCommand("just a message"), null);
+  assert.equal(hermes.runCommand("// not a command"), null);
+});
+
+// --- error log -------------------------------------------------------------
+
+test("the error log rotates instead of growing forever", () => {
+  let text = "";
+  for (let index = 0; index < 300; index++) {
+    text += JSON.stringify({ at: "2026-09-14T10:00:0" + (index % 10) + "Z", source: "test", message: "failure " + index }) + "\n";
+  }
+  assert.ok(text.length > 2000, "precondition: the log is over the cap");
+  const rotated = hermes.rotateLog(text, 2000);
+  assert.ok(rotated.length <= 2000, "rotated size: " + rotated.length);
+  assert.ok(rotated.indexOf("failure 299") >= 0, "the newest entry must survive");
+  assert.ok(rotated.indexOf("failure 0\n") < 0, "the oldest entry must be dropped");
+  const parsed = hermes.parseErrorLog(rotated);
+  assert.equal(parsed[parsed.length - 1].message, "failure 299", "the log stays parseable after rotation");
+});
+
+test("a truncated tail line is skipped, newest last, with a limit", () => {
+  const text =
+    hermes.formatErrorEntry({ at: "2026-09-14T10:00:00Z", source: "Test connection", message: "one" }) +
+    hermes.formatErrorEntry({ at: "2026-09-14T10:00:01Z", source: "Chat", message: "two", detail: "ECONNREFUSED" }) +
+    '{"at":"2026-09-14T10:00:02Z","sou';
+  const all = hermes.parseErrorLog(text);
+  assert.equal(all.length, 2, "the half-written line is ignored");
+  assert.equal(all[1].source, "Chat");
+  assert.equal(all[1].detail, "ECONNREFUSED");
+  assert.deepEqual(hermes.parseErrorLog(text, 1).map((entry) => entry.message), ["two"]);
+  assert.ok(hermes.formatErrorEntry({ at: "x", source: "y", message: "z" }).endsWith("\n"));
+});
+
+test("the error log serialises writes and never rejects", async () => {
+  let file = "";
+  let writes = 0;
+  const log = new hermes.ErrorLog({
+    read: async () => file,
+    write: async (next) => {
+      writes++;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      file = next;
+    },
+  });
+
+  await Promise.all([
+    log.record({ at: "a", source: "s1", message: "first" }),
+    log.record({ at: "b", source: "s2", message: "second" }),
+    log.record({ at: "c", source: "s3", message: "third" }),
+  ]);
+  assert.deepEqual(
+    (await log.read()).map((entry) => entry.message),
+    ["first", "second", "third"],
+    "concurrent records must not interleave or reorder"
+  );
+  assert.equal(writes, 3);
+
+  await log.clear();
+  assert.deepEqual(await log.read(), []);
+});
+
+test("a broken log does not break the caller", async () => {
+  const log = new hermes.ErrorLog({
+    read: async () => {
+      throw new Error("disk gone");
+    },
+    write: async () => {
+      throw new Error("disk gone");
+    },
+  });
+  await log.record({ at: "a", source: "s", message: "m" });
+  assert.deepEqual(await log.read(), []);
+  await log.clear();
+});
+
+test("describeForLog copes with anything thrown", () => {
+  assert.equal(hermes.describeForLog(new Error("boom")), "boom");
+  assert.equal(hermes.describeForLog("plain"), "plain");
+  assert.equal(hermes.describeForLog({ code: 401 }), '{"code":401}');
+  assert.equal(hermes.describeForLog(null), "null");
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

@@ -234,6 +234,62 @@ await test("a new-note request leaves the open note out of the request", async (
   assert.ok(create.indexOf("VAULT CONVENTIONS") >= 0, "the vault conventions must still be sent");
 });
 
+await test("a mentioned note travels with the message", async () => {
+  const plugin = await makePlugin();
+  app.setActiveFile("Kitchen renovation.md");
+  await plugin.runChat([{ role: "user", content: "Compare [[Boiler service]] with this note." }], {
+    mentionTitles: ["Boiler service"],
+  });
+  const body = server.seen[server.seen.length - 1].body;
+  assert.ok(body.indexOf("notes mentioned in this message") >= 0, "mention block missing: " + body.slice(0, 400));
+  assert.ok(body.indexOf("Notes/Boiler service.md") >= 0, "the mentioned note's path is missing");
+  assert.ok(body.indexOf("Back to [[Kitchen renovation]]") >= 0, "the mentioned note's content is missing");
+});
+
+await test("a mention that matches nothing is reported, not guessed", async () => {
+  const plugin = await makePlugin();
+  app.setActiveFile("Kitchen renovation.md");
+  hermes.notices.length = 0;
+  assert.equal((await plugin.resolveMentionedNotes(["Nonexistent note"])).length, 0);
+  assert.ok(
+    hermes.notices.some((message) => message.indexOf("Not sent with the message") >= 0),
+    "the user must be told the note was left out: " + JSON.stringify(hermes.notices)
+  );
+
+  const found = await plugin.resolveMentionedNotes(["boiler service"]);
+  assert.equal(found.length, 1, "a case-insensitive name should resolve");
+  assert.equal(found[0].path, "Notes/Boiler service.md");
+});
+
+await test("a failed connection is recorded and can be read back", async () => {
+  // Port 9 on the loopback interface: nothing listens there.
+  const plugin = await makePlugin({ baseUrl: "http://127.0.0.1:9", probeTimeoutMs: 1500 });
+  // The fake adapter is shared by every plugin instance in this file.
+  await plugin.clearErrors();
+  await plugin.testConnectionWithNotice();
+
+  // recentErrors() goes through the write chain, so it also waits for the record.
+  const recent = await plugin.recentErrors(10);
+  assert.equal(recent.length, 1, "expected exactly one entry, got: " + JSON.stringify(recent));
+  assert.equal(recent[0].source, "Test connection");
+  assert.ok(recent[0].message.length > 0, "the entry must carry a message");
+  assert.ok(plugin.errorLogPath().endsWith("errors.log"), plugin.errorLogPath());
+
+  const raw = await app.vault.adapter.read(plugin.errorLogPath());
+  assert.equal(hermes.parseErrorLog(raw).length, 1, "the file on disk holds the same entry: " + raw);
+
+  await plugin.clearErrors();
+  assert.deepEqual(await plugin.recentErrors(5), [], "clearing must empty the log");
+});
+
+await test("a successful connection writes nothing to the error log", async () => {
+  const plugin = await makePlugin();
+  await plugin.clearErrors();
+  assert.equal((await plugin.testConnection()).ok, true, "the mock server should be reachable");
+  await plugin.testConnectionWithNotice();
+  assert.deepEqual(await plugin.recentErrors(5), [], "a healthy connection must stay quiet");
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");

@@ -185,6 +185,27 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 
 **Answers going into a note lose the assistant's own remarks.** When you use *Insert*, *Append* or *Save as note*, trailing "Let me know if you want more…" / "Note: I can only see the conventions you shared" lines — and a conversational "Sure, here's…" opener — are removed before the text lands in the note, and the notice tells you how many lines were dropped. It is conservative by design: a factual `Note: the warranty expires in 2029.` survives, code blocks are never touched, and *Copy* always gives the raw answer. Turn it off with **Strip caveats from answers** in the settings. Generated notes are never touched by this.
 
+### Bringing notes in with `@`, and commands with `/`
+
+Type **`@`** in the message box: a picker lists your notes, and the one you choose is written into the message as `@[[Note name]]`. That note's **full content travels with the request** (up to four notes, capped so the request stays affordable), alongside the open note. Names resolve the way Obsidian does — exact name, then case-insensitive, then a path like `House/Kitchen renovation` — and a name matching nothing, or two different notes, is reported instead of guessed. Arrow keys move, Enter or Tab picks, Escape closes.
+
+Type **`/`** for commands, which either expand into a message (handled by the normal pipeline, vault conventions and all) or run a local action:
+
+| Command | What it does |
+| --- | --- |
+| `/note <topic>` | Asks for a new note about a topic — goes through the new-note path, never into the open note |
+| `/fix` | Fixes the Markdown and Obsidian formatting of the open note |
+| `/improve <instruction>` | Rewrites the open note, keeping every fact (`/improve make it shorter`) |
+| `/links` | Which notes the open note should link to, and why |
+| `/tags` | Suggests tags following your vault's conventions |
+| `/context` | Toggles sending the open note with the message |
+| `/conventions` | Shows what the plugin learned about your vault |
+| `/clear` | Starts a new conversation |
+| `/settings` | Opens the plugin settings |
+| `/help` | Lists these commands in the chat |
+
+Nothing in the command list can write to your vault on its own — a command produces an answer, and the answer still goes through the usual Create / Insert / Append confirmation.
+
 ## Following Obsidian's rules
 
 A model that knows Markdown still gets Obsidian wrong, so the plugin does two things.
@@ -241,6 +262,7 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **Phone cannot reach the instance at all** | Plain HTTP to another machine is blocked on mobile. Use HTTPS — Tailscale, Cloudflare Tunnel or a TLS reverse proxy. Loopback (`http://127.0.0.1:…`, Hermes running on the same device) is the one exception. |
 | **On a phone, `127.0.0.1` / `localhost` will not save** | Deliberate: on a phone that address points at the phone itself, so nothing could reach Hermes. Use your Tailscale/Cloudflare/ngrok URL. If Hermes really does run on that device (Termux on Android), press *Save anyway* under the field. |
 | **HTTP 403 behind Cloudflare Access** | Add the `CF-Access-Client-Id` / `CF-Access-Client-Secret` service token headers under *Extra request headers*. |
+| **Something failed and you are on a phone (no console)** | Settings → Hermes Agent Notes → **Diagnostics → Show recent errors**, with *Copy all* for a bug report. The same text is in `<vault>/.obsidian/plugins/hermes-agent-notes/errors.log` — newest kept, the file is capped at 64 KB and drops its oldest half when full. |
 | **Insert / Append says "no active note"** | Fixed: the note is resolved with `getActiveFile()`, so *Append* works even while the chat panel has focus. If it still says that, no note is open in Obsidian at all. |
 | **Fetch models / Test connection hangs and the page looks frozen** | Fixed by the **Connection check timeout** (default 15 s) — no request can hang forever any more. Raise it if your instance is just slow, or check the URL and that the gateway is up. |
 | **The note ignores my model choice** | Hermes uses its own default model unless you also set a **provider override** (or enable `gateway.platforms.api_server.direct_model_requests` on the host). |

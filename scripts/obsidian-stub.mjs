@@ -34,9 +34,12 @@ export class TFolder {
 
 export class App {}
 
+export const notices = [];
+
 export class Notice {
   constructor(message) {
     this.message = message;
+    notices.push(message);
   }
   hide() {}
 }

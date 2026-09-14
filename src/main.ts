@@ -15,6 +15,9 @@ import { PromptModal } from "./ui/prompt-modal";
 import { PreviewModal } from "./ui/preview-modal";
 import { AnswerModal, AnswerActions } from "./ui/answer-modal";
 import { looksLikeNewNoteRequest } from "./intent";
+import { matchMentionedFile } from "./mentions";
+import { ErrorLog, describeForLog } from "./error-log";
+import type { ErrorEntry } from "./error-log";
 import { ConventionsModal } from "./ui/conventions-modal";
 import {
   applyFilenameStyle,
@@ -54,6 +57,9 @@ import {
 } from "./prompts";
 
 const MAX_CONTEXT_CHARS = 12000;
+/** Mentioned notes are explicit, but the request still has to stay affordable. */
+const MAX_MENTIONED_CHARS = 24000;
+const MAX_MENTIONED_NOTE_CHARS = 12000;
 
 const EXAMPLES = [
   "Meeting notes for the kitchen renovation kickoff",
@@ -65,6 +71,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
   settings!: HermesAgentNotesSettings;
   private sessionId = "";
   private scanPromise: Promise<VaultConventions | null> | null = null;
+  private errorLogInstance: ErrorLog | null = null;
   private statusBarEl: HTMLElement | null = null;
   private backupTimer: ReturnType<typeof setTimeout> | null = null;
   private lastMarkdownView: MarkdownView | null = null;
@@ -335,6 +342,9 @@ export default class HermesAgentNotesPlugin extends Plugin {
   async testConnectionWithNotice(): Promise<void> {
     const state = await this.testConnection();
     new Notice(state.ok ? "Hermes is reachable: " + state.detail : "Hermes could not be reached: " + state.detail, state.ok ? 6000 : 12000);
+    if (!state.ok) {
+      await this.logError("Test connection", state.detail, this.settings.baseUrl);
+    }
   }
 
   async fetchModels(): Promise<string[]> {
@@ -499,6 +509,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
     targetFolder?: string;
     includeActive?: boolean;
     selection?: string;
+    mentioned?: TFile[];
   } = {}): Promise<NoteContext> {
     const conventions = await this.getConventions();
     const file = this.activeNoteFile();
@@ -518,12 +529,31 @@ export default class HermesAgentNotesPlugin extends Plugin {
       activeContent = activeContent.slice(0, MAX_CONTEXT_CHARS) + "\n\n[the note continues; it was truncated here]";
     }
 
+    const mentioned: { path: string; content: string }[] = [];
+    let budget = MAX_MENTIONED_CHARS;
+    for (const entry of options.mentioned || []) {
+      if (budget <= 0) break;
+      if (entry.path === (file ? file.path : "")) continue;
+      if (mentioned.some((note) => note.path === entry.path)) continue;
+      let body = "";
+      try {
+        body = await this.app.vault.cachedRead(entry);
+      } catch {
+        continue;
+      }
+      const room = Math.min(MAX_MENTIONED_NOTE_CHARS, budget);
+      if (body.length > room) body = body.slice(0, room) + "\n\n[truncated here]";
+      budget -= body.length;
+      mentioned.push({ path: entry.path, content: body });
+    }
+
     return {
       vaultName: this.app.vault.getName(),
       targetFolder,
       notePath: file ? file.path : undefined,
       noteTitle: file ? file.basename : undefined,
       activeNoteContent: activeContent,
+      mentioned,
       selection: options.selection,
       existingNotes: listNotesInFolder(this.app, targetFolder, this.settings.conventionsNotesListed),
       folderList: listFolders(this.app).slice(0, 60),
@@ -592,6 +622,8 @@ export default class HermesAgentNotesPlugin extends Plugin {
     options: {
       includeNote?: boolean;
       system?: string;
+      /** Notes named with @[[…]] that should travel with this request. */
+      mentionTitles?: string[];
       onDelta?: (delta: string, full: string) => void;
       onController?: (controller: AbortController) => void;
     } = {}
@@ -601,7 +633,11 @@ export default class HermesAgentNotesPlugin extends Plugin {
     // open, otherwise the new note comes out as a continuation of the old one.
     const lastUser = [...conversation].reverse().find((entry) => entry.role === "user");
     const wantsNewNote = lastUser ? looksLikeNewNoteRequest(lastUser.content) : false;
-    const context = await this.noteContext({ includeActive: options.includeNote !== false && !wantsNewNote });
+    const mentioned = await this.resolveMentionedNotes(options.mentionTitles || []);
+    const context = await this.noteContext({
+      includeActive: options.includeNote !== false && !wantsNewNote,
+      mentioned,
+    });
     for (let index = conversation.length - 1; index >= 0; index--) {
       if (conversation[index].role === "user") {
         conversation[index] = { role: "user", content: chatUserPrompt(conversation[index].content, context) };
@@ -647,6 +683,79 @@ export default class HermesAgentNotesPlugin extends Plugin {
   private reportError(error: unknown): void {
     if (error instanceof HermesError && error.kind === "aborted") return;
     new Notice("Hermes: " + describeError(error), 12000);
+    void this.logError("Request", error);
+  }
+
+  // --- diagnostics ---------------------------------------------------------
+
+  /** Somewhere to look when something failed, especially on a phone. */
+  private errorLog(): ErrorLog {
+    if (!this.errorLogInstance) {
+      const path = this.app.vault.configDir + "/plugins/" + this.manifest.id + "/errors.log";
+      const adapter = this.app.vault.adapter;
+      const folder = path.slice(0, path.lastIndexOf("/"));
+      this.errorLogInstance = new ErrorLog({
+        read: async () => ((await adapter.exists(path)) ? adapter.read(path) : ""),
+        write: async (text) => {
+          try {
+            await adapter.mkdir(folder);
+          } catch {
+            // already there
+          }
+          await adapter.write(path, text);
+        },
+      });
+    }
+    return this.errorLogInstance;
+  }
+
+  /** Records a problem. Never throws, never blocks the feature that failed. */
+  async logError(source: string, error: unknown, detail?: string): Promise<void> {
+    try {
+      await this.errorLog().record({
+        at: new Date().toISOString(),
+        source,
+        message: describeForLog(error),
+        detail,
+      });
+    } catch {
+      // a broken log must not escalate
+    }
+  }
+
+  recentErrors(limit = 60): Promise<ErrorEntry[]> {
+    return this.errorLog().read(limit);
+  }
+
+  clearErrors(): Promise<void> {
+    return this.errorLog().clear();
+  }
+
+  errorLogPath(): string {
+    return this.app.vault.configDir + "/plugins/" + this.manifest.id + "/errors.log";
+  }
+
+  /**
+   * Turns the notes the user named with @[[…]] into files. Names that match
+   * nothing (or too many notes) are reported instead of being silently dropped.
+   */
+  async resolveMentionedNotes(titles: string[]): Promise<TFile[]> {
+    if (titles.length === 0) return [];
+    const all = this.app.vault.getMarkdownFiles();
+    const files: TFile[] = [];
+    const leftOut: string[] = [];
+    for (const title of titles) {
+      const file = matchMentionedFile(all, title);
+      if (!file || files.some((entry) => entry.path === file.path) || files.length >= 4) {
+        leftOut.push(title);
+        continue;
+      }
+      files.push(file);
+    }
+    if (leftOut.length > 0) {
+      new Notice("Not sent with the message: " + leftOut.join(", "), 8000);
+    }
+    return files;
   }
 
   // --- creating notes ------------------------------------------------------
@@ -831,6 +940,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
       }
     } catch (error) {
       new Notice("Could not write the note: " + (error instanceof Error ? error.message : String(error)));
+      await this.logError("Write note", error, result.path);
     }
   }
 
@@ -948,6 +1058,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
       new Notice("Answer " + verb + file.basename + cleaned.suffix + ".");
     } catch (error) {
       new Notice("Could not update the note: " + (error instanceof Error ? error.message : String(error)));
+      await this.logError("Append to note", error, file.path);
     }
   }
 
@@ -973,6 +1084,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
       }
     } catch (error) {
       new Notice("Could not save the note: " + (error instanceof Error ? error.message : String(error)));
+      await this.logError("Save as note", error, hint);
     }
   }
 }

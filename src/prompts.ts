@@ -19,6 +19,8 @@ export interface NoteContext {
   notePath?: string;
   noteTitle?: string;
   activeNoteContent?: string;
+  /** Notes the user pulled in with @[[…]] — always sent, they asked for them. */
+  mentioned?: { path: string; content: string }[];
   selection?: string;
   existingNotes: string[];
   folderList: string[];
@@ -278,8 +280,21 @@ export function answerUserPrompt(question: string, context: NoteContext): string
 
 export function chatUserPrompt(message: string, context: NoteContext): string {
   const lines = [message.trim()];
+  const mentioned = mentionedBlock(context);
+  if (mentioned) lines.push("", mentioned);
   if (context.activeNoteContent) {
     lines.push("", "Context — the note open in Obsidian (" + (context.notePath || "untitled") + "):", "", context.activeNoteContent);
+  }
+  return lines.join("\n");
+}
+
+/** The notes named with @[[…]], with their content, as its own context block. */
+export function mentionedBlock(context: NoteContext): string {
+  const notes = context.mentioned || [];
+  if (notes.length === 0) return "";
+  const lines = ["Context — notes mentioned in this message (the user asked for these specifically):"];
+  for (const note of notes) {
+    lines.push("", "### " + note.path, "", note.content);
   }
   return lines.join("\n");
 }

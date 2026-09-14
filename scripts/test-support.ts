@@ -42,6 +42,7 @@ export function makeApp(files: FakeFile[]) {
 
   const vault = {
     getName: () => "TestVault",
+    configDir: ".obsidian",
     getAbstractFileByPath: find,
     getMarkdownFiles: () => store.filter((entry) => entry.extension === "md").slice(),
     getFiles: () => store.slice(),
@@ -99,7 +100,12 @@ export function makeAppObject(files: FakeFile[]) {
     on: () => ({}),
     getLeavesOfType: () => [],
     getRightLeaf: () => null,
-    getLeaf: () => null,
+    // A leaf that can actually open a file: otherwise the "open after create"
+    // path throws and the failure hides inside a catch.
+    getLeaf: () => ({
+      openFile: async () => {},
+      setViewState: async () => {},
+    }),
     revealLeaf() {},
     detachLeavesOfType() {},
   };

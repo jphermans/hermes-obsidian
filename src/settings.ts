@@ -5,6 +5,7 @@ import { REMOTE_PRESETS, mergeHeaderLines, presetFor } from "./remote";
 import { loopbackBlockMessage } from "./settings-file";
 import type { AccessMode } from "./types";
 import { copyText } from "./ui/clipboard";
+import { ErrorsModal } from "./ui/errors-modal";
 import { listFolders } from "./vault-rules";
 
 /** One-click prompts for the setup page's prompt box. */
@@ -781,6 +782,29 @@ export class HermesSettingTab extends PluginSettingTab {
         ? "Last automatic backup this session: " + new Date(this.plugin.lastBackupAt).toLocaleTimeString()
         : "No automatic backup written yet in this session.",
     });
+
+    this.renderDiagnostics(containerEl);
+  }
+
+  /** Where to look when something failed — the only place on a phone. */
+  private renderDiagnostics(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName("Diagnostics").setHeading();
+
+    new Setting(containerEl)
+      .setName("Recorded problems")
+      .setDesc(
+        "Failures are written to " + this.plugin.errorLogPath() + " — newest kept, the file is capped so it cannot grow forever. Useful in a bug report; nothing is sent anywhere."
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Show recent errors")
+          .onClick(() => new ErrorsModal(this.plugin.app, this.plugin).open())
+      )
+      .addButton((button) =>
+        button.setButtonText("Clear").onClick(() => {
+          void this.plugin.clearErrors().then(() => new Notice("Error log cleared."));
+        })
+      );
   }
 
   // --- prompt box ----------------------------------------------------------
