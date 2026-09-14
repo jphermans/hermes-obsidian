@@ -543,9 +543,71 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   background: color-mix(in srgb, var(--interactive-accent) 10%, var(--hermes-surface));
 }
 
+/* Animated working indicator — replaces the old "Thinking…" text. */
 .hermes-msg-pending .hermes-bubble {
   color: var(--hermes-muted);
-  font-style: italic;
+}
+
+.hermes-bubble-pending {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  min-height: 18px;
+}
+
+.hermes-pending-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hermes-pending-text:empty {
+  display: none;
+}
+
+.hermes-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.hermes-spinner > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  opacity: 0.35;
+  animation: hermes-working 1.15s ease-in-out infinite;
+}
+
+.hermes-spinner > span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.hermes-spinner > span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes hermes-working {
+  0%,
+  70%,
+  100% {
+    transform: translateY(0) scale(0.82);
+    opacity: 0.35;
+  }
+  35% {
+    transform: translateY(-3px) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Motion-sensitive users still get an unmistakable "working" state. */
+@media (prefers-reduced-motion: reduce) {
+  .hermes-spinner > span {
+    animation: none;
+    opacity: 0.75;
+  }
 }
 
 .hermes-msg-actions {

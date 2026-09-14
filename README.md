@@ -169,7 +169,7 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 
 | Command | What it does |
 | --- | --- |
-| **Open the chat panel** | Sidebar conversation with history, streaming and note actions. |
+| **Open the chat panel** | Sidebar conversation with history, streaming and note actions. While Hermes works, an animated indicator pulses in the pending bubble instead of the word "Thinking…". |
 | **Create a note from a prompt** | Writes a complete new note — properties, headings, wikilinks, tags — for you to confirm. |
 | **Improve the active note** | Rewrites the open note, keeping every existing property, link and fact. |
 | **Rewrite the active note with an instruction** | "shorter", "add a decisions table", "split this into a project note". |
@@ -204,7 +204,7 @@ Hermes Agent Notes is `isDesktopOnly: false` and was written for mobile from the
 * Obsidian's native `requestUrl` for every normal call — no CORS, no browser cleartext-traffic restrictions, identical on iOS and Android.
 * No Node.js imports anywhere (the usual reason plugins crash on mobile).
 * No auto-focus on mobile, so the keyboard never covers a dialog; 16px inputs so iOS does not zoom the viewport; 44px touch targets; responsive layout; clipboard fallback for older WebViews.
-* The chat panel is a normal sidebar view, so it works on phones and tablets.
+* The chat panel is a normal sidebar view, so it works on phones and tablets. Its working indicator is a pure CSS animation and is switched off automatically for *reduce motion*.
 
 The vault-convention scan reads from Obsidian's cache and takes ~20 ms on a 585-note vault.
 

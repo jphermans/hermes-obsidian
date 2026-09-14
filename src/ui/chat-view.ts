@@ -35,6 +35,8 @@ export class HermesChatView extends ItemView {
   private statusEl!: HTMLElement;
   private contextEl!: HTMLElement;
   private pendingEl: HTMLElement | null = null;
+  private pendingTextEl: HTMLElement | null = null;
+  private pendingSpinnerEl: HTMLElement | null = null;
   private pendingText = "";
   private pendingFrame = 0;
 
@@ -239,7 +241,7 @@ export class HermesChatView extends ItemView {
     const prompt = this.lastUserText();
     const newNote = looksLikeNewNoteRequest(prompt);
     this.createPending();
-    if (newNote && this.pendingEl) this.pendingEl.setText("Drafting a new note…");
+    if (newNote) this.setPendingLabel("Drafting a new note");
     try {
       const history = trimHistory(this.entries, this.plugin.settings.maxHistoryMessages);
       const answer = await this.plugin.runChat(history, {
@@ -260,6 +262,8 @@ export class HermesChatView extends ItemView {
       if (this.pendingEl) this.pendingEl.remove();
     } finally {
       this.pendingEl = null;
+      this.pendingTextEl = null;
+      this.pendingSpinnerEl = null;
       this.controller = null;
       this.busy = false;
       this.setBusy(false);
@@ -282,16 +286,34 @@ export class HermesChatView extends ItemView {
       this.renderEntry(entry, prompt);
     }
     const wrapper = this.listEl.createDiv({ cls: "hermes-msg hermes-msg-assistant hermes-msg-pending" });
-    this.pendingEl = wrapper.createDiv({ cls: "hermes-bubble", text: "Thinking…" });
+    this.pendingEl = wrapper.createDiv({ cls: "hermes-bubble hermes-bubble-pending" });
+    this.pendingTextEl = this.pendingEl.createSpan({ cls: "hermes-pending-text" });
+    // An animated indicator instead of the word "Thinking…": it keeps pulsing
+    // while the answer streams in, so "still working" stays visible.
+    const spinner = this.pendingEl.createDiv({ cls: "hermes-spinner" });
+    spinner.setAttr("role", "status");
+    spinner.setAttr("aria-label", "Hermes is working");
+    spinner.setAttr("title", "Hermes is working");
+    spinner.createSpan();
+    spinner.createSpan();
+    spinner.createSpan();
+    this.pendingSpinnerEl = spinner;
     this.scrollToBottom();
+  }
+
+  /** The indicator carries its label for screen readers and as a tooltip. */
+  private setPendingLabel(label: string): void {
+    if (!this.pendingSpinnerEl) return;
+    this.pendingSpinnerEl.setAttr("aria-label", label);
+    this.pendingSpinnerEl.setAttr("title", label);
   }
 
   private schedulePendingRender(): void {
     if (this.pendingFrame) return;
     this.pendingFrame = window.requestAnimationFrame(() => {
       this.pendingFrame = 0;
-      if (!this.pendingEl) return;
-      this.pendingEl.setText(this.pendingText);
+      if (!this.pendingTextEl) return;
+      this.pendingTextEl.setText(this.pendingText);
       this.scrollToBottom();
     });
   }
