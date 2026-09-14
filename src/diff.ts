@@ -154,3 +154,17 @@ export function summarizeDiff(result: DiffResult): string {
 export function contentChanged(before: string, after: string): boolean {
   return (before || "") !== (after || "");
 }
+
+/**
+ * Zero-based line number of the first difference — where the cursor belongs after
+ * an approved edit, so the note opens on the change instead of the top.
+ */
+export function firstChangedLine(before: string, after: string): number {
+  const oldLines = splitLines(before);
+  const newLines = splitLines(after);
+  const limit = Math.min(oldLines.length, newLines.length);
+  for (let index = 0; index < limit; index++) {
+    if (oldLines[index] !== newLines[index]) return index;
+  }
+  return oldLines.length === newLines.length ? 0 : limit;
+}

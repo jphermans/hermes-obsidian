@@ -1,8 +1,12 @@
 /**
  * Shared types for the Hermes Agent Notes plugin.
- * This module imports nothing, so it is safe to use from every other module
+ * This module imports only types, so it stays safe to use from every other module
  * (including the desktop + mobile code paths).
  */
+
+import type { QuickPrompt } from "./quick-prompts";
+import type { ConnectionProfile } from "./profiles";
+import { defaultQuickPrompts } from "./quick-prompts";
 
 export type FilenameStyle = "keep" | "title" | "kebab" | "snake";
 
@@ -86,6 +90,12 @@ export interface HermesAgentNotesSettings {
   allowFileOps: boolean;
   /** Deletions go to the trash unless this is on. */
   permanentDelete: boolean;
+  /** Prompts you fire from the chips above the chat input. */
+  quickPrompts: QuickPrompt[];
+  /** Saved connections, switchable in one click. */
+  profiles: ConnectionProfile[];
+  /** After an approved edit, open the note where the change is. */
+  trackEdits: boolean;
   includeActiveNote: boolean;
   maxHistoryMessages: number;
 
@@ -126,6 +136,9 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   stripCaveats: true,
   allowFileOps: true,
   permanentDelete: false,
+  quickPrompts: defaultQuickPrompts(),
+  profiles: [],
+  trackEdits: true,
   includeActiveNote: true,
   maxHistoryMessages: 12,
 

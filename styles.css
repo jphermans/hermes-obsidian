@@ -776,6 +776,112 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   padding: 2px 8px;
 }
 
+/* Quick prompt chips above the chat input. */
+.hermes-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.hermes-chips.is-hidden {
+  display: none;
+}
+
+.hermes-chip {
+  flex: 0 0 auto;
+  max-width: 220px;
+  padding: 4px 10px;
+  border: 1px solid var(--hermes-border);
+  border-radius: 999px;
+  background: var(--hermes-surface-quiet);
+  color: var(--hermes-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.hermes-chip:hover {
+  background: var(--hermes-accent-soft);
+  color: var(--text-normal);
+}
+
+.hermes-chip-ghost {
+  min-height: 24px;
+}
+
+/* Model and provider, under the input. */
+.hermes-chat-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hermes-model-select,
+.hermes-provider-input {
+  min-height: 30px;
+  font-size: var(--font-ui-smaller);
+}
+
+.hermes-model-select {
+  flex: 0 1 auto;
+  max-width: 60%;
+}
+
+.hermes-provider-input {
+  flex: 1 1 auto;
+  min-width: 80px;
+}
+
+/* History and settings lists (shared row shape). */
+.hermes-history,
+.hermes-library {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.hermes-history-row,
+.hermes-library-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--hermes-border);
+  border-radius: 8px;
+  background: var(--hermes-surface-quiet);
+}
+
+.hermes-history-main,
+.hermes-library-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hermes-history-title {
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hermes-history-meta {
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hermes-msg .hermes-bubble > :first-child {
   margin-top: 0;
 }

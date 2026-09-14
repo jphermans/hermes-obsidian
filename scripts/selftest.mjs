@@ -1234,6 +1234,146 @@ test("everything waiting can be dropped at once", async () => {
   assert.equal(await running, "kept");
 });
 
+// --- quick prompts ----------------------------------------------------------
+
+test("quick prompts are cleaned up and capped", () => {
+  const cleaned = hermes.normalizeQuickPrompts([
+    { id: "a", label: "One", prompt: "  do a thing  " },
+    { prompt: "" },
+    null,
+    { id: "a", label: "duplicate id", prompt: "second" },
+    { prompt: "no label here" },
+  ]);
+  assert.equal(cleaned.length, 2, JSON.stringify(cleaned));
+  assert.equal(cleaned[0].prompt, "do a thing", "whitespace is trimmed");
+  assert.equal(cleaned[1].label, "no label here", "a missing label falls back to the prompt");
+  assert.deepEqual(hermes.normalizeQuickPrompts("nonsense"), []);
+
+  const many = [];
+  for (let index = 0; index < 60; index++) many.push({ id: "p" + index, label: "p", prompt: "prompt " + index });
+  assert.equal(hermes.normalizeQuickPrompts(many).length, hermes.MAX_QUICK_PROMPTS);
+});
+
+test("typing ! searches quick prompts", () => {
+  assert.equal(hermes.quickPromptQuery("!"), "");
+  assert.equal(hermes.quickPromptQuery("!sum"), "sum");
+  assert.equal(hermes.quickPromptQuery("!sum more"), null, "a space ends the lookup");
+  assert.equal(hermes.quickPromptQuery("hello"), null);
+
+  const prompts = hermes.defaultQuickPrompts();
+  assert.equal(hermes.filterQuickPrompts(prompts, "summarise")[0].label, "Summarise this note");
+  assert.equal(hermes.filterQuickPrompts(prompts, "").length, prompts.length);
+  assert.equal(hermes.filterQuickPrompts(prompts, "zzz").length, 0);
+  assert.ok(hermes.filterQuickPrompts(prompts, "tag")[0].label.indexOf("tag") >= 0);
+});
+
+test("a quick prompt can name the open note", () => {
+  assert.equal(hermes.fillQuickPrompt("Summarise @[[{note}]].", "Kitchen renovation"), "Summarise @[[Kitchen renovation]].");
+  assert.equal(hermes.fillQuickPrompt("Summarise {note}.", ""), "Summarise this note.");
+});
+
+// --- chat history -----------------------------------------------------------
+
+test("history sessions are titled, bounded and searchable", () => {
+  const entries = [
+    { role: "assistant", content: "hello" },
+    { role: "user", content: "Move the boiler note into Archive\nand tell me why" },
+  ];
+  assert.equal(hermes.sessionTitle(entries), "Move the boiler note into Archive");
+  assert.equal(hermes.sessionTitle([{ role: "assistant", content: "only an answer" }]), "Untitled conversation");
+  assert.equal(hermes.sessionTitle([{ role: "user", content: "x".repeat(90) }]).length, 58, "long titles are shortened");
+
+  const cleaned = hermes.normalizeHistory([
+    { id: "s1", at: 5, entries: [{ role: "user", content: "first" }, { role: "nope", content: "dropped" }] },
+    { id: "s1", at: 6, entries: [{ role: "user", content: "duplicate id" }] },
+    { at: 7, entries: [] },
+    "junk",
+  ]);
+  assert.equal(cleaned.length, 1);
+  assert.equal(cleaned[0].entries.length, 1, "invalid entries are dropped");
+
+  const sessions = [];
+  for (let index = 0; index < 40; index++) {
+    sessions.push({ id: "s" + index, title: "session " + index, at: index, entries: [{ role: "user", content: "body " + index }] });
+  }
+  const trimmed = hermes.trimSessions(sessions);
+  assert.equal(trimmed.length, hermes.MAX_HISTORY_SESSIONS);
+  assert.equal(trimmed[0].id, "s39", "newest first");
+  assert.ok(trimmed.every((session) => session.id !== "s0"), "the oldest are dropped");
+
+  const updated = hermes.upsertSession(trimmed, { id: "s39", title: "renamed", at: 99, entries: [{ role: "user", content: "new" }] });
+  assert.equal(updated.length, trimmed.length, "an existing session is replaced, not duplicated");
+  assert.equal(updated[0].title, "renamed");
+  assert.equal(updated[0].at, 99);
+
+  assert.equal(hermes.searchSessions(trimmed, "session 12").length, 1);
+  assert.equal(hermes.searchSessions(trimmed, "body 12").length, 1, "the message bodies are searched too");
+  assert.equal(hermes.searchSessions(trimmed, "nothing here").length, 0);
+  assert.equal(hermes.searchSessions(trimmed, "").length, trimmed.length);
+  assert.equal(hermes.removeSession(trimmed, "s39").length, trimmed.length - 1);
+
+  const now = 100 * 60 * 60 * 1000;
+  assert.ok(hermes.describeSession({ id: "x", title: "t", at: now - 20000, entries: [] }, now).indexOf("just now") >= 0);
+  assert.ok(hermes.describeSession({ id: "x", title: "t", at: now - 7200000, entries: [] }, now).indexOf("hours ago") >= 0);
+  assert.ok(hermes.describeSession({ id: "x", title: "t", at: 0, entries: [] }, now).indexOf("unknown") >= 0);
+});
+
+// --- connection profiles ----------------------------------------------------
+
+test("a connection profile captures and restores the connection", () => {
+  const base = Object.assign({}, hermes.DEFAULT_SETTINGS);
+  const capture = hermes.captureProfile(base, "Local", 1000);
+  assert.equal(capture.name, "Local");
+  assert.equal(capture.baseUrl, base.baseUrl);
+
+  const moved = Object.assign({}, base, { baseUrl: "https://hermes.example.com", apiKey: "other", provider: "x" });
+  hermes.applyProfile(moved, capture);
+  assert.equal(moved.baseUrl, base.baseUrl, "the URL comes back");
+  assert.equal(moved.provider, "", "the provider comes back too");
+
+  assert.equal(hermes.profileMatches(base, capture), true);
+  assert.equal(hermes.profileMatches(moved, capture), true, "moved was restored");
+  const different = Object.assign({}, base, { apiKey: "another-key" });
+  assert.equal(hermes.profileMatches(different, capture), false);
+});
+
+test("profiles are bounded, replaceable by name, and never leak the key", () => {
+  const base = Object.assign({}, hermes.DEFAULT_SETTINGS, { apiKey: "super-secret-key" });
+  const one = hermes.captureProfile(base, "Server", 10);
+  let list = hermes.upsertProfile([], one);
+  assert.equal(list.length, 1);
+  list = hermes.upsertProfile(list, hermes.captureProfile(base, "server", 20));
+  assert.equal(list.length, 1, "the same name replaces the existing profile");
+  assert.equal(list[0].at, 20, "the newest version wins");
+  assert.equal(list[0].id, one.id, "and it keeps its id, so references stay valid");
+
+  const description = hermes.describeProfile(one);
+  assert.ok(description.indexOf("super-secret-key") < 0, "the key must never appear: " + description);
+  assert.ok(description.indexOf("key set") >= 0, description);
+  assert.ok(description.indexOf("127.0.0.1:8642") >= 0, "the host is shown: " + description);
+
+  assert.equal(hermes.findProfile(list, one.id)?.name, "Server");
+  assert.equal(hermes.findProfile(list, "nope"), null);
+  assert.equal(hermes.removeProfile(list, one.id).length, 0);
+
+  const cleaned = hermes.normalizeProfiles([{ name: "no url" }, { baseUrl: "  http://a:1  ", name: "A" }, "junk"]);
+  assert.equal(cleaned.length, 1);
+  assert.equal(cleaned[0].baseUrl, "http://a:1");
+  let many = [];
+  for (let index = 0; index < 20; index++) {
+    many = hermes.upsertProfile(many, hermes.captureProfile(base, "p" + index, index));
+  }
+  assert.equal(many.length, hermes.MAX_PROFILES);
+});
+
+test("the first changed line is where the cursor belongs", () => {
+  assert.equal(hermes.firstChangedLine("a\nb\nc", "a\nB\nc"), 1);
+  assert.equal(hermes.firstChangedLine("a\nb", "a\nb"), 0, "no change means the top");
+  assert.equal(hermes.firstChangedLine("a\nb", "a\nb\nc"), 2, "an added line at the end");
+  assert.equal(hermes.firstChangedLine("a\nb\nc", "a\nc"), 1, "a removed line");
+  assert.equal(hermes.firstChangedLine("", "x"), 0);
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

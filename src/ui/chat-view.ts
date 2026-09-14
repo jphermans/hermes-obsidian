@@ -16,7 +16,10 @@ import { filterCommands, isCommandInput, runCommand, SLASH_COMMANDS } from "../s
 import type { SlashAction } from "../slash";
 import { looksLikeFileOpRequest } from "../file-ops";
 import { SuggestDropdown } from "./suggest-dropdown";
+import { HistoryModal } from "./history-modal";
 import { copyText } from "./clipboard";
+import { filterQuickPrompts, fillQuickPrompt, quickPromptQuery } from "../quick-prompts";
+import type { HistoryEntry } from "../history";
 
 export const VIEW_TYPE_HERMES_CHAT = "hermes-agent-chat";
 
@@ -69,6 +72,9 @@ export class HermesChatView extends ItemView {
   /** Messages typed while an answer is running, sent one by one afterwards. */
   private pendingMessages: string[] = [];
   private queueEl: HTMLElement | null = null;
+  private chipsEl: HTMLElement | null = null;
+  /** Identifies this conversation in the stored history. */
+  private historyId = "";
 
   constructor(leaf: WorkspaceLeaf, plugin: HermesAgentNotesPlugin) {
     super(leaf);
@@ -89,6 +95,7 @@ export class HermesChatView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.includeNote = this.plugin.settings.includeActiveNote;
+    this.historyId = "chat-" + Date.now().toString(36);
     this.build();
   }
 
@@ -114,11 +121,18 @@ export class HermesChatView extends ItemView {
     const settingsButton = headerActions.createEl("button", { text: "⚙", cls: "hermes-icon-btn" });
     settingsButton.setAttr("title", "Hermes connection settings");
     settingsButton.addEventListener("click", () => this.plugin.openSettings());
+    const historyButton = headerActions.createEl("button", { text: "🕘", cls: "hermes-icon-btn" });
+    historyButton.setAttr("title", "Chat history — search and restore earlier conversations");
+    historyButton.addEventListener("click", () =>
+      new HistoryModal(this.app, this.plugin, (entries, id) => this.restoreSession(entries, id)).open()
+    );
 
     this.listEl = root.createDiv({ cls: "hermes-chat-messages" });
 
     const composer = root.createDiv({ cls: "hermes-chat-composer" });
     this.suggest = new SuggestDropdown(composer);
+    this.chipsEl = composer.createDiv({ cls: "hermes-chips" });
+    this.renderChips();
     this.contextEl = composer.createDiv({ cls: "hermes-chat-context" });
     this.renderContext();
 
@@ -178,6 +192,38 @@ export class HermesChatView extends ItemView {
     this.sendBtn.addEventListener("click", () => void this.send());
     this.stopBtn = actions.createEl("button", { text: "Stop", cls: "hermes-stop is-hidden" });
     this.stopBtn.addEventListener("click", () => this.cancel());
+
+    // Model and provider, switchable without leaving the conversation.
+    const modelRow = composer.createDiv({ cls: "hermes-chat-model" });
+    const modelSelect = modelRow.createEl("select", { cls: "hermes-model-select" });
+    const current = this.plugin.settings.model || "hermes-agent";
+    const options = this.plugin.settings.availableModels.slice();
+    if (options.indexOf(current) < 0) options.unshift(current);
+    for (const name of options) modelSelect.createEl("option", { text: name, value: name });
+    modelSelect.value = current;
+    modelSelect.addEventListener("change", () => {
+      this.plugin.settings.model = modelSelect.value;
+      void this.plugin.saveSettings();
+      this.renderStatus();
+    });
+    const providerInput = modelRow.createEl("input", { cls: "hermes-provider-input", type: "text" });
+    providerInput.placeholder = "provider override";
+    providerInput.value = this.plugin.settings.provider;
+    providerInput.addEventListener("change", () => {
+      this.plugin.settings.provider = providerInput.value.trim();
+      void this.plugin.saveSettings();
+    });
+    const connectButton = modelRow.createEl("button", { cls: "hermes-icon-btn", text: "⟳" });
+    connectButton.setAttr("title", "Check the connection and fetch the advertised models");
+    connectButton.addEventListener("click", () => {
+      void this.plugin
+        .fetchModels()
+        .then((models) => {
+          new Notice(models.length > 0 ? "Models: " + models.join(", ") : "Hermes did not advertise any model.");
+          this.build();
+        })
+        .catch((error) => new Notice("Could not list models: " + describeError(error), 10000));
+    });
 
     this.queueEl = composer.createDiv({ cls: "hermes-queue is-hidden" });
     this.register(this.plugin.queue.onChange(() => this.renderQueue()));
@@ -466,8 +512,58 @@ export class HermesChatView extends ItemView {
       this.setBusy(false);
       this.renderEntries();
       this.renderQueue();
+      // Kept on disk so the conversation can be found again after a reload.
+      void this.plugin.saveHistory(this.historyId, this.entries);
       this.drainQueue();
     }
+  }
+
+  /** Chips above the input: one click sends the prompt. */
+  private renderChips(): void {
+    const el = this.chipsEl;
+    if (!el) return;
+    el.empty();
+    const prompts = this.plugin.settings.quickPrompts;
+    el.toggleClass("is-hidden", prompts.length === 0);
+    if (prompts.length === 0) return;
+    for (const entry of prompts.slice(0, 12)) {
+      const chip = el.createEl("button", { cls: "hermes-chip", text: entry.label });
+      chip.setAttr("title", entry.prompt);
+      chip.addEventListener("click", () => void this.sendQuickPrompt(entry.id));
+    }
+    const edit = el.createEl("button", { cls: "hermes-chip hermes-chip-ghost", text: "✎" });
+    edit.setAttr("title", "Edit quick prompts in the settings");
+    edit.addEventListener("click", () => this.plugin.openSettings());
+  }
+
+  private async sendQuickPrompt(id: string): Promise<void> {
+    const entry = this.plugin.settings.quickPrompts.find((item) => item.id === id);
+    if (!entry) return;
+    const text = fillQuickPrompt(entry.prompt, this.plugin.activeNoteName());
+    if (this.busy) {
+      this.pendingMessages.push(text);
+      this.renderQueue();
+      new Notice("Queued behind the current answer — it will be sent next.", 5000);
+      return;
+    }
+    await this.submit(text);
+  }
+
+  private async pickQuickPrompt(id: string): Promise<void> {
+    this.inputEl.value = "";
+    await this.sendQuickPrompt(id);
+  }
+
+  /** Puts a stored conversation back in the panel. */
+  private restoreSession(entries: HistoryEntry[], id: string): void {
+    this.cancel();
+    this.pendingMessages = [];
+    this.entries = entries.map((entry) => ({ role: entry.role, content: entry.content }));
+    this.historyId = id;
+    this.plugin.rotateSession();
+    this.renderEntries();
+    this.renderQueue();
+    new Notice("Restored " + entries.length + " messages.", 5000);
   }
 
   /** Offers notes for an @-mention, or commands for a /-command. */
@@ -475,6 +571,20 @@ export class HermesChatView extends ItemView {
     if (!this.suggest) return;
     const text = this.inputEl.value;
     const caret = this.inputEl.selectionStart === null ? text.length : this.inputEl.selectionStart;
+
+    const quick = quickPromptQuery(text);
+    if (quick !== null) {
+      const prompts = filterQuickPrompts(this.plugin.settings.quickPrompts, quick);
+      this.suggest.show(
+        prompts.map((entry) => ({
+          id: entry.id,
+          label: "!" + entry.label,
+          detail: entry.prompt.split("\n")[0].slice(0, 90),
+        })),
+        (id) => void this.pickQuickPrompt(id)
+      );
+      return;
+    }
 
     const mention = detectMention(text, caret);
     if (mention) {
@@ -625,9 +735,12 @@ export class HermesChatView extends ItemView {
   newChat(): void {
     this.cancel();
     this.entries = [];
+    this.pendingMessages = [];
     this.plugin.rotateSession();
+    this.historyId = "chat-" + Date.now().toString(36);
     if (this.inputEl) this.inputEl.value = "";
     this.suggest?.hide();
     this.renderEntries();
+    this.renderQueue();
   }
 }

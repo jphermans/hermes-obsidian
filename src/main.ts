@@ -16,7 +16,19 @@ import { PreviewModal } from "./ui/preview-modal";
 import { AnswerModal, AnswerActions } from "./ui/answer-modal";
 import { looksLikeNewNoteRequest } from "./intent";
 import { SerialQueue } from "./queue";
-import { contentChanged } from "./diff";
+import { contentChanged, firstChangedLine } from "./diff";
+import { normalizeHistory, removeSession, sessionTitle, upsertSession, trimSessions } from "./history";
+import type { HistoryEntry, HistorySession } from "./history";
+import { normalizeQuickPrompts } from "./quick-prompts";
+import type { QuickPrompt } from "./quick-prompts";
+import {
+  applyProfile,
+  captureProfile,
+  describeProfile,
+  findProfile,
+  removeProfile,
+  upsertProfile,
+} from "./profiles";
 import {
   applyableOps,
   looksLikeFileOpRequest,
@@ -813,6 +825,115 @@ export default class HermesAgentNotesPlugin extends Plugin {
     }
   }
 
+  // --- quick prompts, connections and history -------------------------------
+
+  async saveQuickPrompts(prompts: QuickPrompt[]): Promise<void> {
+    this.settings.quickPrompts = normalizeQuickPrompts(prompts);
+    await this.saveSettings();
+  }
+
+  /** Saves the live connection under a name, replacing one with the same name. */
+  async saveCurrentAsProfile(name: string): Promise<void> {
+    const captured = captureProfile(this.settings, name, Date.now());
+    const existing = this.settings.profiles.find(
+      (entry) => entry.name.toLowerCase() === captured.name.toLowerCase()
+    );
+    const profile = existing ? { ...captured, id: existing.id, at: Date.now() } : captured;
+    this.settings.profiles = upsertProfile(this.settings.profiles, profile);
+    await this.saveSettings();
+    new Notice("Saved this connection as “" + profile.name + "”.", 6000);
+  }
+
+  async switchProfile(id: string): Promise<void> {
+    const profile = findProfile(this.settings.profiles, id);
+    if (!profile) return;
+    applyProfile(this.settings, profile);
+    // The new endpoint has its own models; the old list would be misleading.
+    this.settings.availableModels = [];
+    this.settings.connection = null;
+    await this.saveSettings();
+    new Notice("Switched to “" + profile.name + "” — " + describeProfile(profile) + ".", 8000);
+    this.refreshStatusBar();
+  }
+
+  async deleteProfile(id: string): Promise<void> {
+    this.settings.profiles = removeProfile(this.settings.profiles, id);
+    await this.saveSettings();
+  }
+
+  historyPath(): string {
+    return this.app.vault.configDir + "/plugins/" + this.manifest.id + "/history.json";
+  }
+
+  async listHistory(): Promise<HistorySession[]> {
+    try {
+      const adapter = this.app.vault.adapter;
+      const path = this.historyPath();
+      if (!(await adapter.exists(path))) return [];
+      const text = await adapter.read(path);
+      return text.trim().length > 0 ? normalizeHistory(JSON.parse(text)) : [];
+    } catch (error) {
+      await this.logError("Read chat history", error);
+      return [];
+    }
+  }
+
+  private async writeHistory(sessions: HistorySession[]): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    const path = this.historyPath();
+    const folder = path.slice(0, path.lastIndexOf("/"));
+    try {
+      await adapter.mkdir(folder);
+    } catch {
+      // already there
+    }
+    await adapter.write(path, JSON.stringify(trimSessions(sessions)) + "\n");
+  }
+
+  /** Called after each turn; a conversation is one session, updated in place. */
+  async saveHistory(id: string, entries: HistoryEntry[]): Promise<void> {
+    if (entries.length === 0) return;
+    try {
+      const sessions = await this.listHistory();
+      await this.writeHistory(
+        upsertSession(sessions, {
+          id,
+          title: sessionTitle(entries),
+          at: Date.now(),
+          entries: entries.slice(-200),
+        })
+      );
+    } catch (error) {
+      await this.logError("Save chat history", error);
+    }
+  }
+
+  async deleteHistorySession(id: string): Promise<void> {
+    const sessions = await this.listHistory();
+    await this.writeHistory(removeSession(sessions, id));
+  }
+
+  async clearHistory(): Promise<void> {
+    await this.writeHistory([]);
+  }
+
+  /** Opens the note at the first line the edit changed, so the change is in view. */
+  private async openNoteAtChange(file: TFile, before: string, after: string): Promise<void> {
+    try {
+      const leaf = this.app.workspace.getLeaf(false);
+      await leaf.openFile(file);
+      const view =
+        this.app.workspace.getActiveViewOfType(MarkdownView) || (leaf.view instanceof MarkdownView ? leaf.view : null);
+      const editor = view ? view.editor : null;
+      if (!editor) return;
+      const line = Math.min(firstChangedLine(before, after), Math.max(0, editor.lineCount() - 1));
+      editor.setCursor({ line, ch: 0 });
+      editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch: 0 } }, true);
+    } catch (error) {
+      await this.logError("Open at change", error, file.path);
+    }
+  }
+
   // --- diagnostics ---------------------------------------------------------
 
   /** Somewhere to look when something failed, especially on a phone. */
@@ -1078,7 +1199,10 @@ export default class HermesAgentNotesPlugin extends Plugin {
       );
       if (renamed) new Notice("Saved as a new note: " + written.path);
       else new Notice((mode === "create" ? "Note created: " : "Note updated: ") + written.path);
-      if (result.openAfter) {
+      if (mode === "overwrite" && existingContent !== null && this.settings.trackEdits) {
+        // Follow the edit: open the note where it actually changed.
+        await this.openNoteAtChange(written, existingContent, result.content);
+      } else if (result.openAfter) {
         const leaf = this.app.workspace.getLeaf(false);
         await leaf.openFile(written);
       }

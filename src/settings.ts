@@ -6,6 +6,9 @@ import { loopbackBlockMessage } from "./settings-file";
 import type { AccessMode } from "./types";
 import { copyText } from "./ui/clipboard";
 import { ErrorsModal } from "./ui/errors-modal";
+import { QuickPromptModal } from "./ui/quick-prompt-modal";
+import { PromptModal } from "./ui/prompt-modal";
+import { describeProfile, profileMatches } from "./profiles";
 import { listFolders } from "./vault-rules";
 
 /** One-click prompts for the setup page's prompt box. */
@@ -865,6 +868,96 @@ export class HermesSettingTab extends PluginSettingTab {
           void this.plugin.clearErrors().then(() => new Notice("Error log cleared."));
         })
       );
+
+    this.renderLibrary(containerEl);
+  }
+
+  /** Quick prompts, saved connections and the follow-edits switch. */
+  private renderLibrary(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName("Quick prompts").setHeading();
+    const prompts = this.plugin.settings.quickPrompts;
+    const list = containerEl.createDiv({ cls: "hermes-library" });
+    if (prompts.length === 0) {
+      list.createEl("p", { cls: "hermes-notes-desc", text: "No quick prompts yet." });
+    }
+    for (const entry of prompts) {
+      const row = list.createDiv({ cls: "hermes-library-row" });
+      const main = row.createDiv({ cls: "hermes-library-main" });
+      main.createEl("span", { cls: "hermes-history-title", text: entry.label });
+      main.createEl("span", { cls: "hermes-history-meta", text: entry.prompt.split("\n")[0] });
+      const edit = row.createEl("button", { text: "Edit" });
+      edit.addEventListener("click", () =>
+        new QuickPromptModal(this.app, prompts, entry, (next) => void this.savePrompts(next)).open()
+      );
+      const remove = row.createEl("button", { text: "Delete" });
+      remove.addEventListener("click", () =>
+        void this.savePrompts(prompts.filter((item) => item.id !== entry.id))
+      );
+    }
+    new Setting(containerEl)
+      .setDesc(
+        "Chips appear above the chat input and typing ! searches them. A prompt may reference notes with @[[Note]], and {note} becomes the open note's name."
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Add a quick prompt")
+          .onClick(() => new QuickPromptModal(this.app, prompts, null, (next) => void this.savePrompts(next)).open())
+      );
+
+    new Setting(containerEl).setName("Connections").setHeading();
+    const profiles = this.plugin.settings.profiles;
+    const profileList = containerEl.createDiv({ cls: "hermes-library" });
+    if (profiles.length === 0) {
+      profileList.createEl("p", {
+        cls: "hermes-notes-desc",
+        text: "No saved connections yet — fill in the connection fields above, then save them under a name here.",
+      });
+    }
+    for (const profile of profiles) {
+      const row = profileList.createDiv({ cls: "hermes-library-row" });
+      const main = row.createDiv({ cls: "hermes-library-main" });
+      main.createEl("span", { cls: "hermes-history-title", text: profile.name });
+      main.createEl("span", { cls: "hermes-history-meta", text: describeProfile(profile) });
+      const active = profileMatches(this.plugin.settings, profile);
+      const use = row.createEl("button", { text: active ? "Active" : "Use", cls: active ? "" : "mod-cta" });
+      if (!active) {
+        use.addEventListener("click", () => void this.plugin.switchProfile(profile.id).then(() => this.display()));
+      }
+      const remove = row.createEl("button", { text: "Delete" });
+      remove.addEventListener("click", () => void this.plugin.deleteProfile(profile.id).then(() => this.display()));
+    }
+    new Setting(containerEl)
+      .setDesc("Saves the URL, key, extra headers, profile prefix, model and provider above under a name.")
+      .addButton((button) => button.setButtonText("Save this connection as…").onClick(() => void this.promptProfileName()));
+
+    new Setting(containerEl)
+      .setName("Follow edits")
+      .setDesc(
+        "After you approve an edit, open the note at the first changed line so the change is in front of you, instead of leaving the note where it was."
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.trackEdits).onChange((value) => {
+          this.plugin.settings.trackEdits = value;
+          void this.plugin.saveSettings();
+        })
+      );
+  }
+
+  private async savePrompts(prompts: typeof this.plugin.settings.quickPrompts): Promise<void> {
+    await this.plugin.saveQuickPrompts(prompts);
+    this.display();
+  }
+
+  private async promptProfileName(): Promise<void> {
+    const answer = await PromptModal.ask(this.app, {
+      title: "Save this connection",
+      placeholder: "Name, e.g. Local or Server",
+      submitLabel: "Save",
+      rows: 1,
+    });
+    if (!answer) return;
+    await this.plugin.saveCurrentAsProfile(answer.prompt);
+    this.display();
   }
 
   // --- prompt box ----------------------------------------------------------

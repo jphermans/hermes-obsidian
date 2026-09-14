@@ -181,6 +181,9 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 | **Test the Hermes connection** | Health check plus model discovery, with a plain-language diagnosis. |
 | **Show detected vault conventions** | See exactly what the plugin learned — and rescan it. |
 | **Rescan vault conventions** | Force a fresh analysis. |
+| **Open the chat panel** | Sidebar conversation with quick-prompt chips, saved connections, model switching and searchable history. |
+| **Chat history** | Every finished turn is stored in `history.json`; the 🕘 button searches it and restores a conversation into the panel. |
+| **Switch connection** | Save the current endpoint as a named profile (Local, Server) and switch between them in one click under *Connections*. |
 
 **Asking for a new note never touches the note you have open.** If the request is *"create a new note about…"*, *"make a note titled…"*, *"write a note…"*, *"create a file…"*, then the open note is deliberately **left out of the request** (the vault conventions still go in), and the answer offers a single primary action — **Create note** — with no Insert or Append. So the new note is written as its own file and never appended to the note you happen to be looking at. Questions ("What links should this note have?", "Fix the Obsidian formatting of this note") keep the normal Insert / Append / Save as note / Copy row.
 
@@ -325,6 +328,10 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **Fetch models / Test connection hangs and the page looks frozen** | Fixed by the **Connection check timeout** (default 15 s) — no request can hang forever any more. Raise it if your instance is just slow, or check the URL and that the gateway is up. |
 | **The note ignores my model choice** | Hermes uses its own default model unless you also set a **provider override** (or enable `gateway.platforms.api_server.direct_model_requests` on the host). |
 | **Notes do not match my style** | Run **Show detected vault conventions** to see what was inferred, raise *Notes to analyse*, then rescan. |
+| **Where do I put the prompts I keep retyping?** | Settings → Hermes Agent Notes → **Quick prompts**. They appear as chips above the chat input; typing `!` searches them. `{note}` in a prompt becomes the open note's name, and `@[[Note]]` pulls that note in as a mention. Clicking a chip sends it immediately — while an answer is running it is queued instead. |
+| **How do I switch between my local and remote Hermes?** | Fill in the connection for one of them, then **Connections → Save this connection as…**. Repeat for the other. *Use* switches: URL, key, headers, profile prefix, model and provider are all replaced, and the advertised model list is cleared because the new endpoint has its own. |
+| **Can I find a conversation from yesterday?** | The 🕘 button in the chat header. It searches titles *and* message bodies, shows how long ago each was, and *Restore* puts it back in the panel — the next message simply continues with a new Hermes session. Sessions are capped at 30, newest kept, in `history.json` next to `errors.log`. |
+| **The note opened but jumped somewhere odd** | That is **Follow edits**: after an approved edit the note opens at the first changed line. Switch it off under **Follow edits** if you would rather stay where you were. |
 
 ## Development
 

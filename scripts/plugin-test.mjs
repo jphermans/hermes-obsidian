@@ -505,6 +505,55 @@ await test("a queued chat turn still gets its answer, after the command", async 
   await blocker;
 });
 
+await test("a conversation is stored, listed, searchable and removable", async () => {
+  const plugin = await makePlugin();
+  await plugin.clearHistory();
+  const entries = [
+    { role: "user", content: "Move the boiler note into Archive" },
+    { role: "assistant", content: "Done — moved." },
+  ];
+  await plugin.saveHistory("chat-test-1", entries);
+  await plugin.saveHistory("chat-test-1", entries.concat([{ role: "user", content: "and the tiling note" }]));
+
+  let stored = await plugin.listHistory();
+  assert.equal(stored.length, 1, "one conversation, updated in place: " + JSON.stringify(stored.map((s) => s.id)));
+  assert.equal(stored[0].title, "Move the boiler note into Archive");
+  assert.equal(stored[0].entries.length, 3, "the later message was appended");
+
+  await plugin.saveHistory("chat-test-2", [{ role: "user", content: "Something else entirely" }]);
+  stored = await plugin.listHistory();
+  assert.equal(stored.length, 2);
+  assert.equal(stored[0].id, "chat-test-2", "newest first");
+  assert.equal(hermes.searchSessions(stored, "tiling").length, 1, "search finds an older message");
+
+  const raw = await app.vault.adapter.read(plugin.historyPath());
+  assert.ok(raw.indexOf("chat-test-1") >= 0, "it really is on disk");
+
+  await plugin.deleteHistorySession("chat-test-1");
+  assert.equal((await plugin.listHistory()).length, 1);
+  await plugin.clearHistory();
+  assert.deepEqual(await plugin.listHistory(), []);
+});
+
+await test("a saved connection can be switched back to", async () => {
+  const plugin = await makePlugin();
+  plugin.settings.profiles = [];
+  await plugin.saveCurrentAsProfile("Mock server");
+  assert.equal(plugin.settings.profiles.length, 1);
+  assert.ok(plugin.settings.profiles[0].name === "Mock server", JSON.stringify(plugin.settings.profiles[0]));
+
+  const original = plugin.settings.baseUrl;
+  plugin.settings.baseUrl = "https://elsewhere.example.com";
+  plugin.settings.apiKey = "another-key";
+  await plugin.switchProfile(plugin.settings.profiles[0].id);
+  assert.equal(plugin.settings.baseUrl, original, "the saved URL is restored");
+  assert.equal(plugin.settings.apiKey, "test-key", "and the saved key");
+  assert.deepEqual(plugin.settings.availableModels, [], "the old model list is dropped with the connection");
+
+  await plugin.deleteProfile(plugin.settings.profiles[0].id);
+  assert.equal(plugin.settings.profiles.length, 0);
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");
