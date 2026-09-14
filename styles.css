@@ -1,0 +1,586 @@
+/* =====================================================================
+   Hermes Agent Notes — desktop + mobile, dark + light.
+   Every colour comes from an Obsidian theme variable, then gets nudged by
+   a theme-scoped token block below so the plugin reads well on neutral
+   dark-slate and on gray-blue light themes alike (never stark white).
+   ===================================================================== */
+
+.hermes-chat,
+.hermes-notes-modal,
+.hermes-settings,
+.hermes-statusbar {
+  --hermes-surface: var(--background-secondary);
+  --hermes-surface-strong: var(--background-secondary);
+  --hermes-surface-quiet: transparent;
+  --hermes-border: var(--background-modifier-border);
+  --hermes-border-strong: var(--background-modifier-border-hover);
+  --hermes-muted: var(--text-muted);
+  --hermes-faint: var(--text-faint);
+  --hermes-accent-soft: var(--background-modifier-hover);
+  --hermes-warn: var(--text-warning);
+  --hermes-ok: var(--text-success);
+  --hermes-bad: var(--text-error);
+}
+
+/* Neutral dark-slate: surfaces lean darker than the theme, borders lighter. */
+body.theme-dark .hermes-chat,
+body.theme-dark .hermes-notes-modal,
+body.theme-dark .hermes-settings,
+body.theme-dark .hermes-statusbar {
+  --hermes-surface: color-mix(in srgb, var(--background-secondary) 80%, #0c1118);
+  --hermes-surface-strong: color-mix(in srgb, var(--background-primary) 88%, #0a0f15);
+  --hermes-surface-quiet: color-mix(in srgb, var(--background-secondary) 45%, transparent);
+  --hermes-border: color-mix(in srgb, #ffffff 13%, transparent);
+  --hermes-border-strong: color-mix(in srgb, #ffffff 24%, transparent);
+  --hermes-muted: color-mix(in srgb, var(--text-muted) 85%, #d3dbe6);
+  --hermes-faint: color-mix(in srgb, var(--text-faint) 80%, #aab6c6);
+  --hermes-accent-soft: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+  --hermes-warn: color-mix(in srgb, var(--color-orange, #e0a020) 80%, #ffffff);
+  --hermes-ok: color-mix(in srgb, var(--color-green, #2ecc71) 85%, #ffffff);
+  --hermes-bad: color-mix(in srgb, var(--color-red, #e5534b) 85%, #ffffff);
+}
+
+/* Gray-blue light: never #fff, borders carry a slate tint for structure. */
+body.theme-light .hermes-chat,
+body.theme-light .hermes-notes-modal,
+body.theme-light .hermes-settings,
+body.theme-light .hermes-statusbar {
+  --hermes-surface: color-mix(in srgb, var(--background-secondary) 55%, #e3e9f2);
+  --hermes-surface-strong: color-mix(in srgb, var(--background-secondary) 35%, #eaeff7);
+  --hermes-surface-quiet: color-mix(in srgb, #99a8c0 12%, transparent);
+  --hermes-border: color-mix(in srgb, #33405a 18%, transparent);
+  --hermes-border-strong: color-mix(in srgb, #33405a 32%, transparent);
+  --hermes-muted: color-mix(in srgb, var(--text-muted) 72%, #3d4860);
+  --hermes-faint: color-mix(in srgb, var(--text-faint) 70%, #55617a);
+  --hermes-accent-soft: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+  --hermes-warn: color-mix(in srgb, var(--color-orange, #b26a00) 75%, #2f3a4d);
+  --hermes-ok: color-mix(in srgb, var(--color-green, #1f7a44) 75%, #2f3a4d);
+  --hermes-bad: color-mix(in srgb, var(--color-red, #b3322a) 80%, #2f3a4d);
+}
+
+/* --- status ------------------------------------------------------------ */
+
+.hermes-status-card {
+  border: 1px solid var(--hermes-border);
+  border-radius: var(--radius-m);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background: var(--hermes-surface);
+  color: var(--text-normal);
+}
+
+.hermes-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.hermes-status-detail,
+.hermes-notes-path {
+  color: var(--hermes-muted);
+  font-size: var(--font-ui-smaller);
+  margin: 6px 0 0;
+  word-break: break-word;
+}
+
+.hermes-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--hermes-faint);
+  flex: 0 0 auto;
+}
+
+.hermes-status-dot.is-ok {
+  background: var(--hermes-ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hermes-ok) 25%, transparent);
+}
+
+.hermes-status-dot.is-bad {
+  background: var(--hermes-bad);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hermes-bad) 25%, transparent);
+}
+
+/* --- status bar -------------------------------------------------------- */
+
+.hermes-statusbar {
+  cursor: pointer;
+}
+
+.hermes-statusbar-ok {
+  color: var(--hermes-ok);
+}
+
+.hermes-statusbar-bad {
+  color: var(--hermes-warn);
+}
+
+/* --- settings ---------------------------------------------------------- */
+
+.hermes-settings .hermes-guide h3 {
+  margin: 18px 0 6px;
+  font-size: var(--font-ui-medium);
+  color: var(--text-normal);
+}
+
+.hermes-settings .setting-item-description,
+.hermes-notes-desc {
+  color: var(--hermes-muted);
+}
+
+.hermes-settings .hermes-callout {
+  border: 1px solid var(--hermes-border);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  padding: 10px 12px;
+  margin: 10px 0 16px;
+  background: var(--hermes-surface);
+}
+
+.hermes-settings .hermes-callout p {
+  margin: 0 0 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-muted);
+}
+
+.hermes-settings .hermes-callout p:last-child {
+  margin-bottom: 0;
+}
+
+.hermes-guide-list {
+  margin: 6px 0 14px 18px;
+  color: var(--hermes-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.hermes-guide-list li {
+  margin-bottom: 6px;
+}
+
+.hermes-code {
+  margin: 8px 0 12px;
+}
+
+.hermes-code pre {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hermes-border);
+  background: var(--hermes-surface-strong);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.hermes-code button {
+  margin-top: 6px;
+}
+
+/* --- small buttons ----------------------------------------------------- */
+
+.hermes-mini-btn,
+.hermes-example-btn,
+.hermes-tab {
+  font-size: var(--font-ui-smaller);
+  padding: 4px 10px;
+  border-radius: var(--radius-s);
+  background: var(--hermes-surface-quiet);
+  color: var(--text-normal);
+  border: 1px solid var(--hermes-border);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.hermes-mini-btn:hover,
+.hermes-example-btn:hover,
+.hermes-tab:hover {
+  background: var(--hermes-accent-soft);
+  border-color: var(--hermes-border-strong);
+}
+
+.hermes-tab.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.hermes-notes-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.hermes-notes-hint {
+  color: var(--hermes-faint);
+  font-size: var(--font-ui-smaller);
+  margin: 10px 0 0;
+}
+
+/* --- modals ------------------------------------------------------------ */
+
+.hermes-notes-modal .hermes-notes-textarea,
+.hermes-notes-modal .hermes-notes-raw {
+  width: 100%;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hermes-border);
+  background: var(--hermes-surface-strong);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--font-ui-small);
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.hermes-notes-modal .hermes-notes-raw {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  min-height: 240px;
+}
+
+.hermes-notes-modal .hermes-notes-textarea:focus,
+.hermes-notes-modal .hermes-notes-raw:focus,
+.hermes-chat-input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+}
+
+.hermes-notes-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 6px;
+}
+
+.hermes-notes-body {
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--hermes-border);
+  border-radius: var(--radius-s);
+  padding: 4px 12px;
+  background: var(--hermes-surface-strong);
+  color: var(--text-normal);
+}
+
+.hermes-notes-body.is-raw {
+  padding: 8px;
+}
+
+.hermes-preview-render {
+  padding: 0;
+}
+
+.hermes-answer-body,
+.hermes-conventions-body {
+  max-height: 62vh;
+}
+
+.hermes-notes-checks {
+  margin: 8px 0;
+}
+
+.hermes-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.hermes-pill {
+  font-size: var(--font-ui-smaller);
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--hermes-surface-quiet);
+  border: 1px solid var(--hermes-border);
+  color: var(--hermes-muted);
+}
+
+.hermes-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 130px;
+  overflow: auto;
+}
+
+.hermes-issue {
+  display: flex;
+  gap: 6px;
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-muted);
+}
+
+.hermes-issue-icon {
+  flex: 0 0 auto;
+}
+
+.hermes-issue-warn {
+  color: var(--hermes-warn);
+}
+
+.hermes-issue-ok {
+  color: var(--hermes-ok);
+}
+
+.hermes-issue-info {
+  color: var(--hermes-muted);
+}
+
+/* --- chat panel -------------------------------------------------------- */
+
+.hermes-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  color: var(--text-normal);
+}
+
+.hermes-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hermes-border);
+  background: var(--hermes-surface);
+}
+
+.hermes-chat-title {
+  font-weight: 600;
+}
+
+.hermes-chat-header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.hermes-status {
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.hermes-status.is-ok {
+  color: var(--hermes-ok);
+}
+
+.hermes-status.is-bad {
+  color: var(--hermes-warn);
+}
+
+.hermes-icon-btn {
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller);
+  background: transparent;
+  color: var(--text-normal);
+  border: 1px solid var(--hermes-border);
+  border-radius: var(--radius-s);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.hermes-icon-btn:hover {
+  background: var(--hermes-accent-soft);
+  border-color: var(--hermes-border-strong);
+}
+
+.hermes-chat-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--hermes-surface-strong);
+}
+
+.hermes-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.hermes-bubble {
+  padding: 8px 10px;
+  border-radius: var(--radius-m);
+  background: var(--hermes-surface);
+  border: 1px solid var(--hermes-border);
+  color: var(--text-normal);
+  overflow-wrap: anywhere;
+}
+
+/* User messages get a soft accent tint that survives both themes. */
+.hermes-msg-user {
+  align-items: flex-end;
+}
+
+.hermes-msg-user .hermes-bubble {
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--hermes-surface));
+  border-color: color-mix(in srgb, var(--interactive-accent) 34%, var(--hermes-border));
+  white-space: pre-wrap;
+}
+
+body.theme-light .hermes-msg-user .hermes-bubble {
+  background: color-mix(in srgb, var(--interactive-accent) 10%, var(--hermes-surface));
+}
+
+.hermes-msg-pending .hermes-bubble {
+  color: var(--hermes-muted);
+  font-style: italic;
+}
+
+.hermes-msg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.hermes-msg .hermes-bubble > :first-child {
+  margin-top: 0;
+}
+
+.hermes-msg .hermes-bubble > :last-child {
+  margin-bottom: 0;
+}
+
+.hermes-msg .hermes-bubble pre {
+  background: var(--hermes-surface-strong);
+  border: 1px solid var(--hermes-border);
+}
+
+.hermes-chat-empty {
+  color: var(--hermes-muted);
+  font-size: var(--font-ui-small);
+}
+
+.hermes-chat-empty p {
+  color: var(--hermes-muted);
+}
+
+.hermes-chat-empty-warning {
+  color: var(--hermes-warn) !important;
+}
+
+.hermes-chat-examples {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.hermes-chat-examples li {
+  margin-bottom: 6px;
+  color: var(--hermes-muted);
+}
+
+.hermes-example-btn {
+  text-align: left;
+  white-space: normal;
+}
+
+.hermes-chat-composer {
+  border-top: 1px solid var(--hermes-border);
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--hermes-surface);
+}
+
+.hermes-chat-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-muted);
+}
+
+.hermes-context-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--hermes-muted);
+}
+
+.hermes-context-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hermes-faint);
+}
+
+.hermes-chat-input {
+  width: 100%;
+  resize: none;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hermes-border);
+  background: var(--hermes-surface-strong);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--font-ui-small);
+  padding: 6px 8px;
+}
+
+.hermes-chat-input::placeholder {
+  color: var(--hermes-faint);
+}
+
+.hermes-chat-input.is-busy {
+  opacity: 0.65;
+}
+
+.hermes-chat-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+/* --- mobile ------------------------------------------------------------ */
+
+@media screen and (max-width: 480px) {
+  .hermes-notes-modal {
+    max-width: 100vw;
+    border-radius: 0;
+  }
+
+  /* 16px keeps iOS from zooming the viewport when a field takes focus. */
+  .hermes-notes-modal .hermes-notes-textarea,
+  .hermes-notes-modal .hermes-notes-raw,
+  .hermes-chat-input {
+    font-size: 16px;
+  }
+
+  .hermes-notes-body,
+  .hermes-answer-body {
+    max-height: 38vh;
+  }
+
+  .hermes-mini-btn,
+  .hermes-example-btn,
+  .hermes-tab,
+  .hermes-send,
+  .hermes-stop,
+  .hermes-icon-btn {
+    min-height: 44px;
+    padding: 10px 14px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .hermes-chat-actions button {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+
+  .hermes-statusbar {
+    display: none;
+  }
+}

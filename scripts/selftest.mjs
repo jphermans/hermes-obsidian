@@ -1,0 +1,361 @@
+/**
+ * Unit tests for the pure plugin logic: URL handling, file-name sanitising,
+ * model-output unwrapping, frontmatter split/merge, the Obsidian syntax
+ * validator, prompt construction, the vault-convention scan and real file
+ * writes against an in-memory vault.
+ *
+ * Run with `npm test` (bundles first, see scripts/build-tests.mjs).
+ */
+
+import assert from "node:assert/strict";
+import * as hermes from "./.build/tests.mjs";
+
+let passed = 0;
+let failed = 0;
+const failures = [];
+
+function test(name, fn) {
+  try {
+    fn();
+    passed++;
+  } catch (error) {
+    failed++;
+    failures.push(name + "\n      " + (error && error.message ? error.message : String(error)));
+  }
+}
+
+async function testAsync(name, fn) {
+  try {
+    await fn();
+    passed++;
+  } catch (error) {
+    failed++;
+    failures.push(name + "\n      " + (error && error.message ? error.message : String(error)));
+  }
+}
+
+const BAD_CHARS = ["/", "\\", ":", "*", "?", '"', "<", ">", "|", "#", "^", "[", "]"];
+
+// --- URLs -----------------------------------------------------------------
+
+test("normalizeBaseUrl adds a scheme and strips trailing /v1", () => {
+  assert.equal(hermes.normalizeBaseUrl(""), "http://127.0.0.1:8642");
+  assert.equal(hermes.normalizeBaseUrl("http://127.0.0.1:8642/"), "http://127.0.0.1:8642");
+  assert.equal(hermes.normalizeBaseUrl("127.0.0.1:8642/v1"), "http://127.0.0.1:8642");
+  assert.equal(hermes.normalizeBaseUrl("https://hermes.example.com/hermes/"), "https://hermes.example.com/hermes");
+  assert.equal(hermes.normalizeBaseUrl("http://host:8642/p/alice"), "http://host:8642/p/alice");
+});
+
+test("endpointsFor builds the profile-prefixed v1 URL", () => {
+  assert.equal(hermes.endpointsFor("http://h:8642", "").v1, "http://h:8642/v1");
+  assert.equal(hermes.endpointsFor("http://h:8642", "default").v1, "http://h:8642/v1");
+  assert.equal(hermes.endpointsFor("http://h:8642", "/bob/").v1, "http://h:8642/p/bob/v1");
+  assert.equal(hermes.endpointsFor("http://h:8642/", "alice").v1, "http://h:8642/p/alice/v1");
+});
+
+test("obsidianOrigins lists the shapes a plugin can present", () => {
+  const origins = hermes.obsidianOrigins();
+  assert.ok(origins.includes("app://obsidian.md"));
+  assert.ok(origins.includes("capacitor://localhost"));
+});
+
+// --- file names -----------------------------------------------------------
+
+test("sanitizeFilename removes every character Obsidian cannot store", () => {
+  const dirty = 'Report / Q3: "draft" <final>|v2#1^2[3]';
+  const clean = hermes.sanitizeFilename(dirty);
+  for (const character of BAD_CHARS) {
+    assert.ok(!clean.includes(character), "still contains " + character + " → " + clean);
+  }
+  assert.ok(clean.includes("Report"));
+  assert.ok(clean.includes("Q3"));
+});
+
+test("sanitizeFilename trims, truncates and never returns empty", () => {
+  assert.equal(hermes.sanitizeFilename("  trailing dots...  "), "trailing dots");
+  assert.equal(hermes.sanitizeFilename(".hidden"), "hidden");
+  assert.equal(hermes.sanitizeFilename(""), "Untitled note");
+  assert.equal(hermes.sanitizeFilename("tab\there"), "tabhere");
+  assert.equal(hermes.sanitizeFilename("x".repeat(200)).length, 100);
+});
+
+test("applyFilenameStyle honours the vault's naming style", () => {
+  assert.equal(hermes.applyFilenameStyle("Kitchen Renovation Plan", "kebab"), "kitchen-renovation-plan");
+  assert.equal(hermes.applyFilenameStyle("Kitchen Renovation Plan", "snake"), "kitchen_renovation_plan");
+  assert.equal(hermes.applyFilenameStyle("kitchen renovation", "title"), "Kitchen Renovation");
+  assert.equal(hermes.applyFilenameStyle("keep Me As Is", "keep"), "keep Me As Is");
+});
+
+// --- model output ---------------------------------------------------------
+
+test("extractNote unwraps a fence around the whole note", () => {
+  const wrapped = "```markdown\n---\ntitle: A\n---\n\n# Body\n\nText.\n```";
+  assert.equal(hermes.extractNote(wrapped), "---\ntitle: A\n---\n\n# Body\n\nText.");
+});
+
+test("extractNote removes chatty preambles and trailing offers", () => {
+  const chatty = "Sure, here's the note:\n\n# Body\n\nSome text.\n\nLet me know if you want changes.";
+  const note = hermes.extractNote(chatty);
+  assert.ok(note.startsWith("# Body"), "unexpected start: " + note);
+  assert.ok(!note.includes("Let me know"), "trailing chatter kept: " + note);
+});
+
+test("extractNote keeps real code fences inside the note", () => {
+  const note = "```\n# Body\n\ncode:\n\n```js\nconst a = 1;\n```\n```";
+  const extracted = hermes.extractNote(note);
+  assert.ok(extracted.includes("const a = 1;"), "lost the inner code fence");
+  assert.ok(extracted.includes("# Body"));
+});
+
+test("titleFromNote prefers frontmatter, then H1, then the prompt", () => {
+  assert.equal(hermes.titleFromNote("---\ntitle: Kitchen Plan\n---\n\n# Other\n", "x"), "Kitchen Plan");
+  assert.equal(hermes.titleFromNote("# My Heading\n\ntext", "x"), "My Heading");
+  assert.equal(hermes.titleFromNote("---\naliases: [Alias One, Alias Two]\n---\n\nbody", "x"), "Alias One");
+  const long = "one two three four five six seven eight nine ten eleven twelve";
+  assert.ok(hermes.titleFromNote("no heading here", long).split(" ").length <= 9);
+});
+
+// --- frontmatter ----------------------------------------------------------
+
+test("splitFrontmatter separates properties from the body", () => {
+  const split = hermes.splitFrontmatter("---\ntitle: A\ntags: [x, y]\n---\n\n# Body\n");
+  assert.equal(split.present, true);
+  assert.equal(split.data.title, "A");
+  assert.deepEqual(split.data.tags, ["x", "y"]);
+  assert.ok(split.body.startsWith("# Body"));
+});
+
+test("splitFrontmatter reports unparseable frontmatter without losing text", () => {
+  const broken = "---\n[unclosed\n---\n\nbody text";
+  const split = hermes.splitFrontmatter(broken);
+  assert.equal(split.present, false);
+  assert.ok(split.body.includes("body text"));
+  assert.ok(split.body.includes("[unclosed"));
+});
+
+test("splitFrontmatter is a no-op when there is no frontmatter", () => {
+  const split = hermes.splitFrontmatter("# Just a note\n");
+  assert.equal(split.present, false);
+  assert.equal(split.body, "# Just a note\n");
+});
+
+test("mergeFrontmatter keeps existing values and adds new keys", () => {
+  const existing = { title: "Old", tags: ["a"], status: "draft" };
+  const incoming = { title: "New", tags: ["b"], created: "2026-01-01" };
+  const merged = hermes.mergeFrontmatter(existing, incoming);
+  assert.equal(merged.title, "Old");
+  assert.deepEqual(merged.tags, ["a"]);
+  assert.equal(merged.status, "draft");
+  assert.equal(merged.created, "2026-01-01");
+  const union = hermes.mergeFrontmatter(existing, incoming, { keepExisting: false, mergeLists: true });
+  assert.deepEqual(union.tags, ["a", "b"]);
+});
+
+test("serializeNote round-trips through splitFrontmatter", () => {
+  const content = hermes.serializeNote({ title: "X", tags: ["a", "b"], created: "2026-09-14" }, "# Body\n\ntext");
+  assert.ok(content.startsWith("---\n"));
+  const split = hermes.splitFrontmatter(content);
+  assert.equal(split.present, true);
+  assert.equal(split.data.title, "X");
+  assert.deepEqual(split.data.tags, ["a", "b"]);
+  assert.ok(split.body.startsWith("# Body"));
+  assert.equal(hermes.serializeNote(null, "body"), "body\n");
+});
+
+// --- validator ------------------------------------------------------------
+
+const conventions = {
+  at: Date.now(),
+  totalNotes: 10,
+  scanned: 10,
+  folders: [{ path: "/", notes: 10 }],
+  frontmatterUsed: 9,
+  keys: [{ key: "title", count: 9, types: ["text"], samples: ["Kitchen"] }],
+  tags: { total: 3, style: "flat, lowercase", samples: ["#house"], inFrontmatter: 6, inline: 4 },
+  links: { wiki: 12, markdown: 2, embed: 1 },
+  headings: { notesWithH1: 9, samples: ["Kitchen renovation"] },
+  filenames: { separator: "spaces between words", samples: ["Kitchen renovation"], avgWords: 2.3 },
+  callouts: ["note", "tip"],
+};
+
+test("validateNote accepts a clean vault-style note", () => {
+  const note = "---\ntitle: Kitchen\ncreated: 2026-09-14\ntags: [house]\n---\n\n# Kitchen\n\nSee [[Boiler service]], #house and > [!note] Remember the tiles.\n\n- [ ] order tiles\n";
+  const check = hermes.validateNote(note, "Kitchen", conventions);
+  const warnings = check.issues.filter((issue) => issue.level === "warn");
+  assert.deepEqual(warnings, [], "unexpected warnings: " + JSON.stringify(warnings));
+  assert.equal(check.stats.properties, 3);
+  assert.equal(check.stats.wikiLinks, 1);
+});
+
+test("validateNote flags .md links, unbalanced brackets and illegal names", () => {
+  const check = hermes.validateNote("---\ntitle: A\n---\n\n# A\n\nSee [Other](Notes/Other.md) and [[Broken.\n", "Bad/Name", conventions);
+  const messages = check.issues.map((issue) => issue.message).join(" | ");
+  assert.ok(/\.md/.test(messages), "missing .md warning: " + messages);
+  assert.ok(/Unbalanced/.test(messages), "missing bracket warning: " + messages);
+  assert.ok(/characters Obsidian cannot store/.test(messages), "missing file-name warning: " + messages);
+});
+
+test("validateNote flags a tab in frontmatter, an unparsed block and an empty body", () => {
+  const tabbed = hermes.validateNote("---\ntitle: A\n\tbroken: yes\n---\n\n# A\n", "A", conventions);
+  assert.ok(tabbed.issues.some((issue) => /tab character/.test(issue.message)));
+  const unparsed = hermes.validateNote("---\n[oops\n---\n\n# A\n", "A", conventions);
+  assert.ok(unparsed.issues.some((issue) => /does not parse as YAML/.test(issue.message)));
+  const empty = hermes.validateNote("---\ntitle: A\n---\n", "A", conventions);
+  assert.ok(empty.issues.some((issue) => /body is empty/.test(issue.message)));
+});
+
+// --- prompts --------------------------------------------------------------
+
+test("systemPrompt carries the Obsidian rules and the vault conventions", () => {
+  const context = {
+    vaultName: "TestVault",
+    targetFolder: "Notes",
+    notePath: "Notes/Current.md",
+    noteTitle: "Current",
+    activeNoteContent: "# Current",
+    existingNotes: ["Kitchen", "Boiler"],
+    folderList: ["Notes", "Daily"],
+    includeFrontmatter: true,
+    frontmatterTemplate: "---\ntitle: <note title>\n---",
+    conventions,
+    language: "auto",
+  };
+  const prompt = hermes.systemPrompt("create", context);
+  assert.ok(prompt.includes("OBSIDIAN MARKDOWN RULES"));
+  assert.ok(prompt.includes("TestVault"));
+  assert.ok(prompt.includes("Target folder for this note: Notes"));
+  assert.ok(prompt.includes("[[Note Name]]"));
+  assert.ok(prompt.includes("VAULT CONVENTIONS"));
+  assert.ok(prompt.includes("title"));
+  assert.ok(prompt.includes("Kitchen | Boiler"));
+  const noFrontmatter = hermes.systemPrompt("create", Object.assign({}, context, { includeFrontmatter: false }));
+  assert.ok(/Do not add frontmatter/.test(noFrontmatter));
+});
+
+test("trimHistory keeps the most recent messages", () => {
+  const messages = [
+    { role: "user", content: "1" },
+    { role: "assistant", content: "2" },
+    { role: "user", content: "3" },
+    { role: "assistant", content: "4" },
+    { role: "user", content: "5" },
+    { role: "assistant", content: "6" },
+  ];
+  const trimmed = hermes.trimHistory(messages, 4);
+  assert.equal(trimmed.length, 4);
+  assert.equal(trimmed[3].content, "6");
+  assert.equal(hermes.trimHistory(messages, 0).length, 6);
+});
+
+test("defaultFrontmatterTemplate mirrors the detected properties", () => {
+  const detected = Object.assign({}, conventions, {
+    keys: [
+      { key: "status", count: 5, types: ["text"], samples: ["draft"] },
+      { key: "created", count: 5, types: ["date"], samples: ["2026-01-01"] },
+      { key: "tags", count: 5, types: ["list"], samples: ["[house]"] },
+    ],
+  });
+  const template = hermes.defaultFrontmatterTemplate(detected);
+  assert.ok(template.startsWith("---"));
+  assert.ok(template.includes("status: <value>"));
+  assert.ok(/created: [0-9]{4}-[0-9]{2}-[0-9]{2}/.test(template));
+  assert.ok(template.includes("tags: []"));
+  assert.equal(template.split("\n").filter((line) => line === "---").length, 2);
+});
+
+// --- vault scan and real writes -------------------------------------------
+
+await testAsync("scanVault reports whether property values are quoted", async () => {
+  const app = hermes.makeAppObject([
+    { path: "quoted.md", content: '---\ntitle: "Kitchen renovation"\nstatus: "active"\ntags: ["house"]\n---\n\n# A\n' },
+  ]);
+  const scan = await hermes.scanVault(app, 10);
+  assert.ok(scan.quoting.quoted >= 3, JSON.stringify(scan.quoting));
+  assert.equal(scan.quoting.unquoted, 0);
+  assert.equal(hermes.countQuoting("title: Plain\n- item\n").quoted, 0);
+  assert.equal(hermes.countQuoting("title: Plain\n- item\n").unquoted, 2);
+});
+
+await testAsync("scanVault learns properties, tags, links, callouts and names", async () => {
+  const app = hermes.makeAppObject([
+    {
+      path: "Kitchen renovation.md",
+      content:
+        "---\ntitle: Kitchen renovation\ntags: [project/kitchen, house]\ncreated: 2026-01-05\nstatus: draft\n---\n\n# Kitchen renovation\n\nLink to [[Boiler service]] and [[Tiles]]!\n\n> [!note] Budget is tight\n- [ ] order tiles\n",
+    },
+    {
+      path: "Notes/Boiler service.md",
+      content: "---\ntitle: Boiler service\ncreated: 2025-11-02\n---\n\n# Boiler service\n\nSee [Other](Notes/Other.md) and [[Kitchen renovation]]\n\nSome #inline-tag here\n",
+    },
+    { path: "Notes/Tiles.md", content: "No frontmatter, just text with [[Kitchen renovation]]\n" },
+    {
+      path: "Daily/2026-09-14.md",
+      content: "---\ntags:\n  - daily\ncreated: 2026-09-14\n---\n\n# 2026-09-14\n\n> [!tip] Test\n",
+    },
+  ]);
+
+  const scan = await hermes.scanVault(app, 40);
+  assert.equal(scan.totalNotes, 4);
+  assert.equal(scan.scanned, 4);
+  assert.equal(scan.frontmatterUsed, 3);
+  const keys = scan.keys.map((key) => key.key);
+  assert.ok(keys.includes("title"), "keys: " + keys.join(", "));
+  assert.ok(keys.includes("tags"));
+  assert.ok(keys.includes("created"));
+  const created = scan.keys.find((key) => key.key === "created");
+  assert.ok(created.types.includes("date"), "created typed as " + created.types.join(","));
+  assert.ok(scan.tags.total >= 4, "tags: " + scan.tags.total);
+  assert.ok(scan.tags.samples.some((tag) => tag.includes("project/kitchen")), "samples: " + scan.tags.samples.join(" "));
+  assert.ok(/nested/.test(scan.tags.style), "style: " + scan.tags.style);
+  assert.ok(scan.links.wiki >= 4, "wikilinks: " + scan.links.wiki);
+  assert.equal(scan.links.markdown, 1);
+  assert.ok(scan.callouts.includes("note"));
+  assert.ok(scan.callouts.includes("tip"));
+  assert.equal(scan.headings.notesWithH1, 3);
+  assert.equal(scan.filenames.separator, "spaces between words");
+  assert.ok(scan.folders.some((folder) => folder.path === "Notes" && folder.notes === 2));
+});
+
+await testAsync("ensureFolder creates nested folders once", async () => {
+  const { vault, folders } = hermes.makeApp([]);
+  const app = { vault };
+  assert.equal(await hermes.ensureFolder(app, ""), "");
+  assert.equal(await hermes.ensureFolder(app, "Projects/Kitchen"), "Projects/Kitchen");
+  assert.ok(folders.has("Projects"));
+  assert.ok(folders.has("Projects/Kitchen"));
+  assert.equal(await hermes.ensureFolder(app, "Projects/Kitchen"), "Projects/Kitchen");
+});
+
+await testAsync("uniquePath never collides with an existing note", async () => {
+  const { vault } = hermes.makeApp([
+    { path: "Note.md", content: "a" },
+    { path: "Note 1.md", content: "b" },
+    { path: "Journal/Day.md", content: "c" },
+  ]);
+  const app = { vault };
+  assert.equal(hermes.uniquePath(app, "", "Note"), "Note 2.md");
+  assert.equal(hermes.uniquePath(app, "Journal", "Day"), "Journal/Day 1.md");
+  assert.equal(hermes.uniquePath(app, "Fresh", "New"), "Fresh/New.md");
+});
+
+await testAsync("writeNote creates, refuses duplicates, overwrites and appends", async () => {
+  const { vault } = hermes.makeApp([]);
+  const app = { vault };
+  const created = await hermes.writeNote(app, "Folder/Note.md", "first\n", "create");
+  assert.equal(created.path, "Folder/Note.md");
+  assert.equal(await vault.read(created), "first\n");
+  await assert.rejects(() => hermes.writeNote(app, "Folder/Note.md", "again\n", "create"));
+  await hermes.writeNote(app, "Folder/Note.md", "second\n", "overwrite");
+  assert.equal(await vault.read(created), "second\n");
+  await hermes.writeNote(app, "Folder/Note.md", "appended\n", "append");
+  assert.equal(await vault.read(created), "second\n\nappended\n");
+});
+
+// --- report ---------------------------------------------------------------
+
+console.log("selftest: " + passed + " passed, " + failed + " failed");
+if (failures.length > 0) {
+  console.log("\nFailures:");
+  for (const failure of failures) console.log("  ✗ " + failure);
+  process.exit(1);
+}
