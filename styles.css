@@ -616,6 +616,14 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   gap: 4px;
 }
 
+/* How the answer travelled back, under the bubble. */
+.hermes-transport {
+  align-self: flex-start;
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-faint);
+  letter-spacing: 0.02em;
+}
+
 .hermes-msg .hermes-bubble > :first-child {
   margin-top: 0;
 }

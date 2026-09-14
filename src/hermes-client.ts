@@ -30,6 +30,8 @@ export interface ChatResult {
   usage?: ChatUsage;
   model?: string;
   streamed: boolean;
+  /** Streamed in name only: the whole answer arrived in one read (a proxy buffered it). */
+  buffered?: boolean;
 }
 
 export type HermesErrorKind =
@@ -523,6 +525,11 @@ export class HermesClient {
       throw new HermesError("This environment cannot read a streaming response.", "network");
     }
 
+    // A server — or a proxy in front of it — that ignores stream:true answers
+    // with plain JSON, which is worth naming precisely instead of "empty answer".
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    const isEventStream = contentType.indexOf("event-stream") >= 0;
+
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -530,10 +537,12 @@ export class HermesClient {
     let usage: ChatUsage | undefined;
     let model: string | undefined;
     let done = false;
+    let reads = 0;
 
     while (!done) {
       const chunk = await reader.read();
       if (chunk.done) break;
+      reads++;
       buffer += decoder.decode(chunk.value, { stream: true });
       let index = buffer.indexOf("\n");
       while (index >= 0) {
@@ -571,7 +580,19 @@ export class HermesClient {
       }
     }
 
-    if (!content.trim()) throw new HermesError("Hermes returned an empty answer.", "server");
-    return { content, usage, model, streamed: true };
+    if (!content.trim()) {
+      if (!isEventStream) {
+        throw new HermesError(
+          "Hermes answered without streaming (Content-Type: " +
+            (contentType || "unknown") +
+            ") — the server ignored stream:true, or a proxy in front of it buffered the whole response.",
+          "server"
+        );
+      }
+      throw new HermesError("Hermes returned an empty answer.", "server");
+    }
+    // A long answer that arrived in a single read means something buffered it.
+    const buffered = reads <= 1 && content.length > 1200;
+    return { content, usage, model, streamed: true, buffered };
   }
 }

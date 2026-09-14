@@ -30,6 +30,8 @@ const PROMPT_SAMPLES: { label: string; prompt: string }[] = [
 ];
 
 export class HermesSettingTab extends PluginSettingTab {
+  /** Last "Verify streaming" report, kept so it stays readable on screen. */
+  private streamingReport = "";
   plugin: HermesAgentNotesPlugin;
 
   constructor(app: App, plugin: HermesAgentNotesPlugin) {
@@ -278,7 +280,29 @@ export class HermesSettingTab extends PluginSettingTab {
           void this.plugin.saveSettings();
           this.display();
         })
-      );
+      )
+      .addButton((button) => {
+        let busy = false;
+        button.setButtonText("Verify streaming").onClick(() => {
+          if (busy) return;
+          busy = true;
+          button.setButtonText("Checking…");
+          void this.plugin
+            .verifyStreaming()
+            .then((report) => {
+              this.streamingReport = report;
+              this.display();
+            })
+            .finally(() => {
+              busy = false;
+              button.setButtonText("Verify streaming");
+            });
+        });
+      });
+
+    if (this.streamingReport) {
+      containerEl.createEl("p", { cls: "hermes-notes-path", text: this.streamingReport });
+    }
 
     if (this.plugin.settings.streaming) {
       const origins = obsidianOrigins();

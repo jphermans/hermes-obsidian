@@ -68,6 +68,13 @@ const MAX_CONTEXT_CHARS = 12000;
 const MAX_MENTIONED_CHARS = 24000;
 const MAX_MENTIONED_NOTE_CHARS = 12000;
 
+/** How an answer actually travelled back, so the UI can be honest about it. */
+export interface TransportInfo {
+  streamed: boolean;
+  buffered: boolean;
+  fellBack: boolean;
+}
+
 const EXAMPLES = [
   "Meeting notes for the kitchen renovation kickoff",
   "Summarise this note and tighten the prose",
@@ -390,9 +397,11 @@ export default class HermesAgentNotesPlugin extends Plugin {
         text = result.content;
         model = result.model || model;
         streamed = true;
+        if (result.buffered) this.warnAboutBuffering();
       } catch (error) {
         if (error instanceof HermesError && error.kind === "aborted") throw error;
         console.warn("[Hermes Agent Notes] streaming failed in the setup page", error);
+        await this.logError("Streaming (setup page)", error, this.endpointLabel());
         new Notice("Streaming was refused — using the standard transport.", 6000);
       }
     }
@@ -633,6 +642,8 @@ export default class HermesAgentNotesPlugin extends Plugin {
       mentionTitles?: string[];
       onDelta?: (delta: string, full: string) => void;
       onController?: (controller: AbortController) => void;
+      /** Told which transport answered, so the UI can say so. */
+      onTransport?: (info: TransportInfo) => void;
     } = {}
   ): Promise<string> {
     const conversation: ChatMessage[] = history.map((entry) => ({ role: entry.role, content: entry.content }));
@@ -654,21 +665,30 @@ export default class HermesAgentNotesPlugin extends Plugin {
     const system = options.system || systemPrompt("chat", context);
     const client = this.client();
 
+    let fellBack = false;
     if (this.settings.streaming && options.onDelta) {
       const controller = new AbortController();
       if (options.onController) options.onController(controller);
       try {
         const streamed = await client.chatStream(conversation, { system, signal: controller.signal, sessionId: this.sessionId, sessionKey: this.sessionKey() }, options.onDelta);
+        if (streamed.buffered) this.warnAboutBuffering();
+        if (options.onTransport) {
+          options.onTransport({ streamed: true, buffered: streamed.buffered === true, fellBack: false });
+        }
         return streamed.content;
       } catch (error) {
         if (error instanceof HermesError && error.kind === "aborted") throw error;
         console.warn("[Hermes Agent Notes] streaming failed, using the native transport", error);
+        await this.logError("Streaming", error, this.endpointLabel());
         new Notice("Streaming was refused — falling back to the standard transport.", 6000);
+        fellBack = true;
       }
     }
 
     const chatOptions: ChatOptions = { system, sessionId: this.sessionId, sessionKey: this.sessionKey() };
     const result = await client.chat(conversation, chatOptions);
+    // Reported once, after the fact: a fallback must not be reported as a plain deliver.
+    if (options.onTransport) options.onTransport({ streamed: false, buffered: false, fellBack });
     return result.content;
   }
 
@@ -691,6 +711,68 @@ export default class HermesAgentNotesPlugin extends Plugin {
     if (error instanceof HermesError && error.kind === "aborted") return;
     new Notice("Hermes: " + describeError(error), 12000);
     void this.logError("Request", error);
+  }
+
+  private bufferingWarned = false;
+
+  /** Says once, with the likely cause, why tokens are not appearing one by one. */
+  private warnAboutBuffering(): void {
+    if (this.bufferingWarned) return;
+    this.bufferingWarned = true;
+    new Notice(
+      "The whole answer arrived in one piece: something between Obsidian and Hermes is buffering the stream — a reverse proxy (nginx needs proxy_buffering off), a CDN, or the server itself. Everything else works.",
+      14000
+    );
+    void this.logError("Streaming buffered", "the answer arrived in a single read", this.endpointLabel());
+  }
+
+  /**
+   * One small streamed request, measured, and reported in plain words: whether
+   * streaming works, and if not, which side is stopping it.
+   */
+  async verifyStreaming(): Promise<string> {
+    const client = this.client();
+    const started = Date.now();
+    let firstDeltaAt = 0;
+    let deltas = 0;
+    let received = "";
+    try {
+      const result = await client.chatStream(
+        [{ role: "user", content: "Reply with exactly: streaming works" }],
+        {
+          system: "You are a connectivity probe. Answer with one short line and nothing else.",
+          sessionId: this.sessionId,
+          sessionKey: this.sessionKey(),
+        },
+        (_delta, full) => {
+          deltas++;
+          if (firstDeltaAt === 0) firstDeltaAt = Date.now() - started;
+          received = full;
+        }
+      );
+      const total = Date.now() - started;
+      if (result.buffered) {
+        return (
+          "Streaming is connected, but the whole answer arrived in one piece after " +
+          total +
+          " ms. Something is buffering the response: a reverse proxy (nginx: proxy_buffering off), a CDN, or the server itself. Until that is off, tokens cannot appear one by one."
+        );
+      }
+      return (
+        "Streaming works: " +
+        deltas +
+        " events, first token after " +
+        firstDeltaAt +
+        " ms, " +
+        total +
+        " ms in total, " +
+        received.trim().length +
+        " characters received."
+      );
+    } catch (error) {
+      await this.logError("Verify streaming", error, this.endpointLabel());
+      return "Streaming failed: " + describeError(error);
+    }
   }
 
   // --- diagnostics ---------------------------------------------------------

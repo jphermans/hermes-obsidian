@@ -930,6 +930,18 @@ test("titleUserPrompt tells the agent what a title may not be", () => {
   assert.ok(prompt.indexOf("# Kitchen renovation") >= 0, "the note must be included");
 });
 
+// --- streaming: what the user is told ---------------------------------------
+
+test("the transport label tells the truth about streaming", () => {
+  assert.equal(hermes.transportLabel({ streamed: true, buffered: false, fellBack: false }), "streamed live");
+  assert.ok(
+    hermes.transportLabel({ streamed: true, buffered: true, fellBack: false }).indexOf("buffering") >= 0,
+    "a buffered stream must be called out"
+  );
+  assert.ok(hermes.transportLabel({ streamed: false, buffered: false, fellBack: true }).indexOf("refused") >= 0);
+  assert.ok(hermes.transportLabel({ streamed: false, buffered: false, fellBack: false }).indexOf("streaming is off") >= 0);
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

@@ -303,6 +303,102 @@ await test("a disabled timeout waits for a slow answer (0 = unlimited)", async (
   }
 });
 
+await test("a stream split across awkward chunks is reassembled", async () => {
+  const pieces = ["# Kitchen renovation", "\n\nBody with ", "[[Boiler service]]. café", " Done."];
+  const expected = pieces.join("");
+  const split = http.createServer((request, response) => {
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    response.write('data: {"model":"hermes-agent","choices":[{"delta":{"con');
+    response.write('tent":"# Kitchen renovation"}}]}\n\n');
+    // CRLF endings and a comment keep-alive, which must be ignored.
+    response.write(": ping\r\n\r\n");
+    response.write('data: {"choices":[{"delta":{"content":"\\n\\nBody with "}}]}\r\n\r\n');
+    // Two events in one flush, then a UTF-8 character split across writes.
+    const head = Buffer.from('data: {"choices":[{"delta":{"content":"[[Boiler service]]. caf');
+    const firstByte = Buffer.from([0xc3]);
+    const secondByte = Buffer.from([0xa9]);
+    response.write(Buffer.concat([head, firstByte]));
+    response.write(Buffer.concat([secondByte, Buffer.from('"}}]}\n\n')]));
+    response.write('data: {"choices":[{"delta":{"content":" Done."}}]}\n\n');
+    response.write('data: {"usage":{"total_tokens":9}}\n\n');
+    // The terminator itself arrives in two pieces.
+    response.write("data: [DO");
+    setTimeout(() => {
+      response.write("NE]\n\n");
+      response.end();
+    }, 10);
+  });
+  await new Promise((resolve) => split.listen(0, "127.0.0.1", resolve));
+  try {
+    const client = new hermes.HermesClient(
+      Object.assign({}, hermes.DEFAULT_SETTINGS, { baseUrl: "http://127.0.0.1:" + split.address().port, apiKey: "k", chatTimeoutMs: 8000 })
+    );
+    const seen = [];
+    const result = await client.chatStream([{ role: "user", content: "hi" }], {}, (delta, full) => seen.push(full));
+    assert.equal(result.content, expected, "the answer must survive every split point");
+    assert.equal(result.streamed, true);
+    assert.equal(result.model, "hermes-agent", "the model name from the first event is kept");
+    assert.ok(seen.length >= 3, "deltas should arrive progressively, got " + seen.length);
+    for (const full of seen) {
+      assert.ok(expected.startsWith(full), "every update must be a growing prefix: " + JSON.stringify(full));
+    }
+    assert.equal(result.buffered, false, "a stream that arrived in pieces is not buffered");
+  } finally {
+    split.close();
+  }
+});
+
+await test("a server that ignores stream:true is named, not called empty", async () => {
+  const jsonish = http.createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => (body += chunk));
+    request.on("end", () => {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "not streamed" } }] }));
+    });
+  });
+  await new Promise((resolve) => jsonish.listen(0, "127.0.0.1", resolve));
+  try {
+    const client = new hermes.HermesClient(
+      Object.assign({}, hermes.DEFAULT_SETTINGS, { baseUrl: "http://127.0.0.1:" + jsonish.address().port, apiKey: "k", chatTimeoutMs: 8000 })
+    );
+    await assert.rejects(
+      () => client.chatStream([{ role: "user", content: "hi" }], {}, () => {}),
+      (error) => {
+        assert.equal(error.kind, "server", "kind: " + error.kind);
+        assert.ok(error.message.indexOf("without streaming") >= 0, error.message);
+        assert.ok(error.message.indexOf("application/json") >= 0, error.message);
+        assert.ok(error.message.indexOf("proxy") >= 0, "the likely cause must be mentioned: " + error.message);
+        return true;
+      }
+    );
+  } finally {
+    jsonish.close();
+  }
+});
+
+await test("a long answer in a single read is flagged as buffered", async () => {
+  const long = "B".repeat(1500);
+  const buffery = http.createServer((request, response) => {
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    // Everything, including the terminator, in one write: what a buffering proxy looks like.
+    response.end(
+      'data: {"choices":[{"delta":{"content":"' + long + '"}}]}\n\n' + "data: [DONE]\n\n"
+    );
+  });
+  await new Promise((resolve) => buffery.listen(0, "127.0.0.1", resolve));
+  try {
+    const client = new hermes.HermesClient(
+      Object.assign({}, hermes.DEFAULT_SETTINGS, { baseUrl: "http://127.0.0.1:" + buffery.address().port, apiKey: "k", chatTimeoutMs: 8000 })
+    );
+    const result = await client.chatStream([{ role: "user", content: "hi" }], {}, () => {});
+    assert.equal(result.content, long);
+    assert.equal(result.buffered, true, "a 1500-character answer in one read means something buffered it");
+  } finally {
+    buffery.close();
+  }
+});
+
 server.close();
 
 console.log("api test: " + passed + " passed, " + failed + " failed");

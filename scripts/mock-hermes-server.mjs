@@ -18,6 +18,8 @@ export async function startMockServer(options = {}) {
   const key = options.key === undefined ? "test-key" : options.key;
   const answer = options.answer || ANSWER;
   const titleAnswer = options.titleAnswer || "Lead times in the workshop";
+  /** Behave like a server/proxy that ignores stream:true and answers with JSON. */
+  const ignoreStream = options.ignoreStream === true;
   const delayMs = options.delayMs || 0;
   const seen = [];
 
@@ -51,7 +53,7 @@ export async function startMockServer(options = {}) {
       if (!authorized) return sendJson(401, { error: "unauthorized" });
       const payload = JSON.parse(body || "{}");
       const reply = replyFor(payload);
-      if (payload.stream) {
+      if (payload.stream && !ignoreStream) {
         response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
         const pieces = reply === ANSWER ? DELTAS : [reply];
         for (const piece of pieces) {

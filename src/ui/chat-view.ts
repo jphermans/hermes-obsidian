@@ -11,6 +11,7 @@ import {
   suggestNotes,
 } from "../mentions";
 import type { MentionContext } from "../mentions";
+import type { TransportInfo } from "../main";
 import { filterCommands, isCommandInput, runCommand, SLASH_COMMANDS } from "../slash";
 import type { SlashAction } from "../slash";
 import { SuggestDropdown } from "./suggest-dropdown";
@@ -25,6 +26,8 @@ interface ChatEntry {
   newNote?: boolean;
   /** Informational entry (help): no Insert/Append/Save row. */
   noActions?: boolean;
+  /** How this answer travelled back. */
+  transport?: TransportInfo;
 }
 
 const EXAMPLES = [
@@ -33,6 +36,14 @@ const EXAMPLES = [
   "Fix the Obsidian formatting of this note",
   "What links should this note have?",
 ];
+
+/** One short line saying how the answer actually arrived. */
+export function transportLabel(info: TransportInfo): string {
+  if (info.streamed && info.buffered) return "one piece — something is buffering the stream";
+  if (info.streamed) return "streamed live";
+  if (info.fellBack) return "streaming refused — delivered whole";
+  return "delivered whole (streaming is off)";
+}
 
 export class HermesChatView extends ItemView {
   plugin: HermesAgentNotesPlugin;
@@ -217,6 +228,12 @@ export class HermesChatView extends ItemView {
         openSettings.addEventListener("click", () => this.plugin.openSettings());
       } else {
         empty.createEl("p", { text: "Connected to " + this.plugin.endpointLabel() + " as " + this.plugin.modelLabel() + "." });
+        if (!this.plugin.settings.streaming) {
+          empty.createEl("p", {
+            cls: "hermes-chat-empty-hint",
+            text: "Streaming is off, so answers arrive in one piece. Turn it on in the settings and press Verify streaming to see what your server allows.",
+          });
+        }
       }
       empty.createEl("p", { cls: "hermes-chat-empty-hint", text: "Try one of these:" });
       const list = empty.createEl("ul", { cls: "hermes-chat-examples" });
@@ -244,6 +261,10 @@ export class HermesChatView extends ItemView {
     const bubble = wrapper.createDiv({ cls: "hermes-bubble" });
     if (entry.role === "assistant") {
       void MarkdownRenderer.render(this.app, entry.content, bubble, "", this);
+      if (entry.transport) {
+        const label = transportLabel(entry.transport);
+        if (label) wrapper.createDiv({ cls: "hermes-transport", text: label });
+      }
       if (entry.noActions !== true) this.addActions(wrapper, entry.content, entry.newNote === true, prompt);
     } else {
       bubble.setText(entry.content);
@@ -311,6 +332,7 @@ export class HermesChatView extends ItemView {
     const mentionTitles = extractMentionedTitles(typed);
     this.createPending();
     if (newNote) this.setPendingLabel("Drafting a new note");
+    let transport: TransportInfo | undefined;
     try {
       const history = trimHistory(this.entries, this.plugin.settings.maxHistoryMessages);
       // The bubble is not always what goes out: a command has been expanded and
@@ -325,6 +347,9 @@ export class HermesChatView extends ItemView {
         // runChat enforces this too; passing it here keeps the two in step.
         includeNote: this.includeNote && !newNote,
         mentionTitles,
+        onTransport: (info) => {
+          transport = info;
+        },
         onDelta: (_delta, full) => {
           this.pendingText = full;
           this.schedulePendingRender();
@@ -333,7 +358,7 @@ export class HermesChatView extends ItemView {
           this.controller = controller;
         },
       });
-      this.entries.push({ role: "assistant", content: answer, newNote });
+      this.entries.push({ role: "assistant", content: answer, newNote, transport });
     } catch (error) {
       const message = describeError(error);
       this.entries.push({ role: "assistant", content: "⚠️ " + message });

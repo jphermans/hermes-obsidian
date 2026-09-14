@@ -220,6 +220,21 @@ On a rewrite, existing frontmatter values are preserved and missing keys added �
 
 **A note is named after its content, never after the assistant.** The title (and therefore the file name) comes from what the note says: the `title` property or the H1 the agent wrote. If an answer arrives without either, the agent is asked to name it. `Hermes`, `AI`, `Assistant`, `Answer`, `Note` and `Untitled` are refused as titles and file names, and so is your own request text — *"make it shorter"* can never become a file name. Only when the agent cannot be reached does the plugin fall back to the first real line of the note, and the title is always visible in the confirmation before it is written.
 
+### If tokens do not appear one by one
+
+Streaming is **off by default** (it needs one thing on the Hermes side that is easy to forget), and the chat panel now says under every answer how it actually arrived: *streamed live*, *one piece — something is buffering the stream*, *streaming refused — delivered whole*, or *delivered whole (streaming is off)*.
+
+Four things stop it, in order of likelihood:
+
+1. **The setting is off.** Settings → *Stream answers*, then press **Verify streaming**. The report tells you whether events arrive, how long the first token took — or exactly which side refused.
+2. **CORS.** Streaming is a browser request, so Hermes has to allow this app's origin. On the machine running the gateway, add to `~/.hermes/.env`:
+   `API_SERVER_CORS_ORIGINS=app://obsidian.md,capacitor://localhost,http://localhost`
+   then `hermes gateway stop && hermes gateway`. Desktop, iOS and Android each present a different origin, so keep all three.
+3. **A proxy is buffering.** nginx needs `proxy_buffering off;` on the API route, and Cloudflare or a tunnel must have buffering disabled. The plugin detects this: the answer arrives in one piece, it says so, and *Verify streaming* names the cause.
+4. **The server ignores `stream: true`** and answers with JSON — *Verify streaming* says exactly that instead of calling the answer empty.
+
+Every refusal is written to the error log as well (Settings → Diagnostics), with the endpoint, so the reason is still there afterwards.
+
 ## Mobile
 
 Hermes Agent Notes is `isDesktopOnly: false` and was written for mobile from the start:
@@ -264,6 +279,7 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **Phone cannot reach the instance at all** | Plain HTTP to another machine is blocked on mobile. Use HTTPS — Tailscale, Cloudflare Tunnel or a TLS reverse proxy. Loopback (`http://127.0.0.1:…`, Hermes running on the same device) is the one exception. |
 | **On a phone, `127.0.0.1` / `localhost` will not save** | Deliberate: on a phone that address points at the phone itself, so nothing could reach Hermes. Use your Tailscale/Cloudflare/ngrok URL. If Hermes really does run on that device (Termux on Android), press *Save anyway* under the field. |
 | **HTTP 403 behind Cloudflare Access** | Add the `CF-Access-Client-Id` / `CF-Access-Client-Secret` service token headers under *Extra request headers*. |
+| **No tokens appear / the answer arrives all in one piece** | Streaming is off by default, or Hermes is not allowing this app's origin, or something between you and it is buffering. Press **Verify streaming** in the settings — it reports which of the four causes it is, and the reason is also written to the error log. |
 | **Something failed and you are on a phone (no console)** | Settings → Hermes Agent Notes → **Diagnostics → Show recent errors**, with *Copy all* for a bug report. The same text is in `<vault>/.obsidian/plugins/hermes-agent-notes/errors.log` — newest kept, the file is capped at 64 KB and drops its oldest half when full. |
 | **Insert / Append says "no active note"** | Fixed: the note is resolved with `getActiveFile()`, so *Append* works even while the chat panel has focus. If it still says that, no note is open in Obsidian at all. |
 | **Fetch models / Test connection hangs and the page looks frozen** | Fixed by the **Connection check timeout** (default 15 s) — no request can hang forever any more. Raise it if your instance is just slow, or check the URL and that the gateway is up. |

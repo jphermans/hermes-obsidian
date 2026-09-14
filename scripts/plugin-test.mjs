@@ -346,6 +346,45 @@ await test("a placeholder title from the agent is refused and the content is use
   }
 });
 
+await test("the plugin reports which transport answered", async () => {
+  // Default settings have streaming off, and the UI must say so plainly.
+  const off = await makePlugin();
+  let offInfo = null;
+  await off.runChat([{ role: "user", content: "hi" }], { onDelta: () => {}, onTransport: (info) => (offInfo = info) });
+  assert.deepEqual(offInfo, { streamed: false, buffered: false, fellBack: false }, JSON.stringify(offInfo));
+
+  // With streaming on, the same call streams against the mock server.
+  const on = await makePlugin({ streaming: true });
+  let onInfo = null;
+  const answer = await on.runChat([{ role: "user", content: "hi" }], { onDelta: () => {}, onTransport: (info) => (onInfo = info) });
+  assert.deepEqual(onInfo, { streamed: true, buffered: false, fellBack: false }, JSON.stringify(onInfo));
+  assert.ok(answer.indexOf("Kitchen renovation") >= 0, answer);
+});
+
+await test("a refused stream falls back, says so, and is logged", async () => {
+  // A server (or proxy) that ignores stream:true and answers with JSON.
+  const ignoring = await startMockServer({ key: "test-key", ignoreStream: true });
+  try {
+    const plugin = await makePlugin({ baseUrl: ignoring.baseUrl, streaming: true });
+    await plugin.clearErrors();
+    let info = null;
+    const answer = await plugin.runChat([{ role: "user", content: "hi" }], {
+      onDelta: () => {},
+      onTransport: (value) => (info = value),
+    });
+    assert.equal(info.streamed, false, "the fallback must not claim to have streamed");
+    assert.equal(info.fellBack, true, JSON.stringify(info));
+    assert.ok(answer.indexOf("Kitchen renovation") >= 0, "the answer still arrives: " + answer);
+
+    const log = await plugin.recentErrors(5);
+    assert.equal(log.length, 1, "the refusal must be recorded: " + JSON.stringify(log));
+    assert.equal(log[0].source, "Streaming");
+    assert.ok(log[0].message.indexOf("without streaming") >= 0, log[0].message);
+  } finally {
+    ignoring.close();
+  }
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");
