@@ -151,6 +151,16 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
   .field { font-size: 13.5px; color: var(--muted); }
   .field b { color: var(--text); font-weight: 600; }
+  figure { margin: 20px 0; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 13px; color: var(--faint); margin-top: 8px; line-height: 1.5; }
+  .figure-frame { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 14px; box-shadow: var(--shadow); }
+  img.hero { display: block; width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--border); margin: 18px 0 6px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 12px; margin: 16px 0; }
+  .stat { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; }
+  .stat b { display: block; font-size: 21px; letter-spacing: -0.02em; color: var(--text); }
+  .stat span { font-size: 12.5px; color: var(--faint); line-height: 1.4; display: block; margin-top: 3px; }
+  .stat.accent b { color: var(--accent); }
   footer { max-width: 1180px; margin: 0 auto; padding: 0 22px 70px; color: var(--faint); font-size: 13.5px; }
 </style>
 </head>
@@ -169,6 +179,7 @@
   <nav class="toc">
     <h2>Contents</h2>
     <a href="#start">Quick start</a>
+    <a href="#flow">What happens when you ask</a>
     <a href="#choose">Choose your instance</a>
     <a href="#host">1 · Enable the API server</a>
     <a href="#same">2 · Same machine</a>
@@ -187,12 +198,82 @@
     <a href="#privacy">Privacy &amp; backups</a>
     <hr>
     <a class="sub" href="#field">What goes in each field</a>
+    <a class="sub" href="#defaults">Defaults at a glance</a>
     <a class="sub" href="#mobile">Mobile specifics</a>
   </nav>
 
   <main>
     <h1>Hermes Agent Notes — setup for every instance</h1>
     <p class="lede">One page for every way to reach a Hermes instance: the same machine, your own network, Tailscale, Cloudflare Tunnel, ngrok, a TLS proxy, a dedicated profile, or Hermes running on the phone itself. Pick your row in the table, follow that section, then run the <a href="#verify">verify checklist</a>.</p>
+
+    <img class="hero" src="banner.png" alt="Hermes Agent Notes — an Obsidian plugin that writes notes with a Hermes agent" width="1280" height="640">
+
+    <figure>
+      <div class="figure-frame">
+        <svg viewBox="0 0 900 330" role="img" aria-label="Diagram: Obsidian with the plugin on the left, an HTTPS tunnel in the middle, and the Hermes host on the right with its API server, agent and model. Vault files never leave the left side.">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"></path>
+            </marker>
+          </defs>
+
+          <!-- Obsidian side -->
+          <rect x="14" y="52" width="250" height="214" rx="12" fill="var(--surface-quiet)" stroke="var(--border)"></rect>
+          <text x="30" y="80" font-size="14" font-weight="640" fill="var(--text)">Obsidian</text>
+          <text x="30" y="99" font-size="11.5" fill="var(--faint)">desktop · iPhone · iPad · Android</text>
+
+          <rect x="30" y="112" width="218" height="50" rx="9" fill="var(--accent-soft)" stroke="var(--accent)"></rect>
+          <text x="44" y="133" font-size="12.5" font-weight="600" fill="var(--text)">Hermes Agent Notes plugin</text>
+          <text x="44" y="150" font-size="11" fill="var(--muted)">chat panel · quick prompts · review window</text>
+
+          <rect x="30" y="170" width="218" height="44" rx="9" fill="none" stroke="var(--border)"></rect>
+          <text x="44" y="190" font-size="12" fill="var(--text)">Vault — notes, links, frontmatter</text>
+          <text x="44" y="205" font-size="10.5" fill="var(--faint)">written only by the plugin, with approval</text>
+
+          <rect x="30" y="222" width="218" height="30" rx="8" fill="none" stroke="var(--ok)" stroke-dasharray="4 3"></rect>
+          <text x="44" y="241" font-size="10.8" fill="var(--ok)">stays on this device — never uploaded</text>
+
+          <!-- tunnel -->
+          <rect x="304" y="96" width="176" height="112" rx="12" fill="var(--surface)" stroke="var(--border)"></rect>
+          <text x="318" y="120" font-size="12.5" font-weight="620" fill="var(--text)">HTTPS route</text>
+          <text x="318" y="140" font-size="11" fill="var(--muted)">Tailscale</text>
+          <text x="318" y="156" font-size="11" fill="var(--muted)">Cloudflare Tunnel</text>
+          <text x="318" y="172" font-size="11" fill="var(--muted)">ngrok · TLS proxy</text>
+          <text x="318" y="194" font-size="10.5" fill="var(--faint)">or plain HTTP on loopback / LAN</text>
+
+          <!-- hermes side -->
+          <rect x="520" y="52" width="366" height="214" rx="12" fill="var(--surface-quiet)" stroke="var(--border)"></rect>
+          <text x="536" y="80" font-size="14" font-weight="640" fill="var(--text)">Hermes instance</text>
+          <text x="536" y="99" font-size="11.5" fill="var(--faint)">your machine · a VPS · a phone</text>
+
+          <rect x="536" y="112" width="334" height="44" rx="9" fill="none" stroke="var(--accent-2)"></rect>
+          <text x="550" y="130" font-size="12" font-weight="600" fill="var(--text)">API server — :8642</text>
+          <text x="550" y="146" font-size="10.5" fill="var(--muted)">/health · /v1/models · /v1/chat/completions · stream</text>
+
+          <rect x="536" y="166" width="160" height="48" rx="9" fill="none" stroke="var(--border)"></rect>
+          <text x="548" y="186" font-size="11.5" fill="var(--text)">Agent turn</text>
+          <text x="548" y="202" font-size="10.5" fill="var(--faint)">tools, memory, skills</text>
+
+          <rect x="710" y="166" width="160" height="48" rx="9" fill="none" stroke="var(--border)"></rect>
+          <text x="722" y="186" font-size="11.5" fill="var(--text)">Model</text>
+          <text x="722" y="202" font-size="10.5" fill="var(--faint)">whatever you configured</text>
+
+          <rect x="536" y="222" width="334" height="30" rx="8" fill="none" stroke="var(--border)"></rect>
+          <text x="550" y="241" font-size="10.8" fill="var(--muted)">state.db — sessions + memory of this instance only</text>
+
+          <!-- flows -->
+          <path d="M 252 137 L 300 137" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arrow)" fill="none"></path>
+          <text x="262" y="128" font-size="10.5" fill="var(--faint)">request</text>
+          <path d="M 300 176 L 254 176" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arrow)" fill="none"></path>
+          <text x="258" y="196" font-size="10.5" fill="var(--faint)">Markdown</text>
+
+          <path d="M 480 133 L 516 133" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arrow)" fill="none"></path>
+          <path d="M 516 180 L 482 180" stroke="var(--muted)" stroke-width="1.6" marker-end="url(#arrow)" fill="none"></path>
+          <text x="640" y="292" font-size="10.5" fill="var(--faint)">Only text crosses the wire. The note file is written locally, after you approve the diff.</text>
+        </svg>
+      </div>
+      <figcaption><b>Figure 1 — the shape of every setup.</b> The plugin and your vault live on the left; the HTTPS route in the middle exists only to carry text; the Hermes instance on the right never holds a path into your vault.</figcaption>
+    </figure>
 
     <div class="card note">
       <h3>The plugin does all the file work</h3>
@@ -208,7 +289,140 @@
       <li>Press <b>Test connection</b>. Then <b>Open chat panel</b> and ask for a note.</li>
     </ol>
 
+    <h2 id="flow">What happens when you ask</h2>
+    <figure>
+      <div class="figure-frame">
+        <svg viewBox="0 0 900 372" role="img" aria-label="Sequence diagram: you ask, the plugin builds context, the request crosses the route to the API server, the agent answers, the plugin shows a diff for approval, and the file is written locally.">
+          <defs>
+            <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"></path>
+            </marker>
+            <marker id="arrow4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ok)"></path>
+            </marker>
+          </defs>
+
+          <!-- lifelines -->
+          <g stroke="var(--border)" stroke-dasharray="3 4">
+            <line x1="90" y1="66" x2="90" y2="344"></line>
+            <line x1="300" y1="66" x2="300" y2="344"></line>
+            <line x1="510" y1="66" x2="510" y2="344"></line>
+            <line x1="720" y1="66" x2="720" y2="344"></line>
+          </g>
+
+          <text x="90" y="34" font-size="12" font-weight="620" fill="var(--text)" text-anchor="middle">You</text>
+          <text x="90" y="50" font-size="10.5" fill="var(--faint)" text-anchor="middle">in the vault</text>
+          <text x="300" y="34" font-size="12" font-weight="620" fill="var(--text)" text-anchor="middle">Plugin</text>
+          <text x="300" y="50" font-size="10.5" fill="var(--faint)" text-anchor="middle">desktop or mobile</text>
+          <text x="510" y="34" font-size="12" font-weight="620" fill="var(--text)" text-anchor="middle">HTTPS route</text>
+          <text x="510" y="50" font-size="10.5" fill="var(--faint)" text-anchor="middle">tunnel · proxy · LAN</text>
+          <text x="720" y="34" font-size="12" font-weight="620" fill="var(--text)" text-anchor="middle">Hermes API server</text>
+          <text x="720" y="50" font-size="10.5" fill="var(--faint)" text-anchor="middle">agent turn + model</text>
+
+          <!-- 1 -->
+          <line x1="94" y1="96" x2="296" y2="96" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow3)"></line>
+          <text x="196" y="88" font-size="10.8" fill="var(--muted)" text-anchor="middle">1 · your request (chat, a command, a quick prompt)</text>
+
+          <!-- 2 -->
+          <text x="200" y="122" font-size="10.5" fill="var(--faint)" text-anchor="middle">2 · vault conventions + the note in question are added as context</text>
+          <line x1="304" y1="142" x2="716" y2="142" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow3)"></line>
+          <text x="510" y="134" font-size="10.8" fill="var(--muted)" text-anchor="middle">3 · POST /v1/chat/completions (Bearer key, session id)</text>
+
+          <!-- 4 -->
+          <rect x="596" y="158" width="248" height="34" rx="8" fill="var(--surface-quiet)" stroke="var(--border)"></rect>
+          <text x="720" y="174" font-size="11" fill="var(--text)" text-anchor="middle">4 · the agent works: tools, memory, model</text>
+          <text x="720" y="187" font-size="10" fill="var(--faint)" text-anchor="middle">a long turn can take minutes — the answer timeout is 5 min</text>
+
+          <!-- 5 -->
+          <line x1="716" y1="216" x2="514" y2="216" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow3)"></line>
+          <line x1="506" y1="240" x2="304" y2="240" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow3)"></line>
+          <text x="510" y="208" font-size="10.8" fill="var(--muted)" text-anchor="middle">5 · Markdown comes back</text>
+          <text x="510" y="234" font-size="10.8" fill="var(--muted)" text-anchor="middle">(token by token when streaming is on)</text>
+
+          <!-- 6 -->
+          <line x1="296" y1="268" x2="94" y2="268" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arrow3)"></line>
+          <text x="196" y="260" font-size="10.8" fill="var(--muted)" text-anchor="middle">6 · review window: diff, preview, file name</text>
+
+          <!-- 7 -->
+          <line x1="94" y1="300" x2="296" y2="300" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#arrow4)"></line>
+          <text x="196" y="292" font-size="10.8" fill="var(--ok)" text-anchor="middle">7 · Approve &amp; save (or Reject — nothing is written)</text>
+
+          <rect x="30" y="316" width="392" height="40" rx="8" fill="none" stroke="var(--ok)" stroke-dasharray="4 3"></rect>
+          <text x="44" y="334" font-size="11" fill="var(--ok)">8 · the file is written here, on this device, through Obsidian's own APIs</text>
+          <text x="44" y="348" font-size="10.2" fill="var(--faint)">links update, the note opens at the first changed line — no server involved</text>
+
+          <text x="446" y="336" font-size="10.5" fill="var(--faint)">Nothing is written on steps 1–6. A rejected edit leaves the file byte-identical.</text>
+        </svg>
+      </div>
+      <figcaption><b>Figure 4 — one request, start to finish.</b> The server side never learns a path in your vault, and nothing is written until step 7 — which is why an unreachable instance costs you an answer, never a file.</figcaption>
+    </figure>
+
     <h2 id="choose">Choose your instance</h2>
+
+    <figure>
+      <div class="figure-frame">
+        <svg viewBox="0 0 900 420" role="img" aria-label="Decision flowchart: where does Hermes run and where does Obsidian run, leading to loopback, LAN, Tailscale, Cloudflare, ngrok, a TLS proxy or a dedicated profile.">
+          <defs>
+            <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"></path>
+            </marker>
+          </defs>
+
+          <rect x="330" y="14" width="240" height="46" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"></rect>
+          <text x="450" y="34" font-size="12.5" font-weight="620" fill="var(--text)" text-anchor="middle">Where does Hermes run?</text>
+          <text x="450" y="50" font-size="11" fill="var(--muted)" text-anchor="middle">and which devices must reach it?</text>
+
+          <!-- branch 1 -->
+          <path d="M 450 60 L 450 84 L 130 84 L 130 108" stroke="var(--muted)" fill="none" marker-end="url(#arrow2)"></path>
+          <path d="M 450 60 L 450 84 L 450 108" stroke="var(--muted)" fill="none" marker-end="url(#arrow2)"></path>
+          <path d="M 450 60 L 450 84 L 770 84 L 770 108" stroke="var(--muted)" fill="none" marker-end="url(#arrow2)"></path>
+
+          <rect x="26" y="108" width="208" height="60" rx="10" fill="var(--surface)" stroke="var(--border)"></rect>
+          <text x="130" y="130" font-size="12" font-weight="600" fill="var(--text)" text-anchor="middle">Same machine as Obsidian</text>
+          <text x="130" y="148" font-size="11" fill="var(--muted)" text-anchor="middle">loopback — desktop only</text>
+          <text x="130" y="161" font-size="10.5" fill="var(--faint)" text-anchor="middle">§2</text>
+
+          <rect x="346" y="108" width="208" height="60" rx="10" fill="var(--surface)" stroke="var(--border)"></rect>
+          <text x="450" y="130" font-size="12" font-weight="600" fill="var(--text)" text-anchor="middle">Another machine at home</text>
+          <text x="450" y="148" font-size="11" fill="var(--muted)" text-anchor="middle">same Wi-Fi / LAN</text>
+          <text x="450" y="161" font-size="10.5" fill="var(--faint)" text-anchor="middle">§3 desktop · §4 phones</text>
+
+          <rect x="666" y="108" width="208" height="60" rx="10" fill="var(--surface)" stroke="var(--border)"></rect>
+          <text x="770" y="130" font-size="12" font-weight="600" fill="var(--text)" text-anchor="middle">A machine you own / a VPS</text>
+          <text x="770" y="148" font-size="11" fill="var(--muted)" text-anchor="middle">reachable from anywhere</text>
+          <text x="770" y="161" font-size="10.5" fill="var(--faint)" text-anchor="middle">§4–§7</text>
+
+          <!-- phone question -->
+          <path d="M 450 168 L 450 196" stroke="var(--muted)" fill="none" marker-end="url(#arrow2)"></path>
+          <rect x="318" y="196" width="264" height="44" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"></rect>
+          <text x="450" y="216" font-size="12" font-weight="620" fill="var(--text)" text-anchor="middle">Does a phone or tablet need it?</text>
+          <text x="450" y="232" font-size="11" fill="var(--muted)" text-anchor="middle">plain HTTP to another host is refused</text>
+
+          <path d="M 318 218 L 226 218 L 226 262" stroke="var(--muted)" fill="none" marker-end="url(#arrow2)"></path>
+          <text x="238" y="212" font-size="10.5" fill="var(--faint)">no</text>
+          <path d="M 582 218 L 690 218 L 690 262" stroke="var(--muted)" fill="none" marker-end="url(#arrow2)"></path>
+          <text x="664" y="212" font-size="10.5" fill="var(--faint)">yes → HTTPS</text>
+
+          <rect x="30" y="262" width="392" height="132" rx="10" fill="var(--surface)" stroke="var(--border)"></rect>
+          <text x="46" y="284" font-size="12" font-weight="600" fill="var(--text)">No HTTPS needed</text>
+          <text x="46" y="304" font-size="11" fill="var(--muted)">§2 loopback — http://127.0.0.1:8642</text>
+          <text x="46" y="321" font-size="11" fill="var(--muted)">§3 LAN — http://192.168.1.50:8642</text>
+          <text x="46" y="338" font-size="11" fill="var(--muted)">§9 Hermes on the phone itself — loopback, with Save anyway</text>
+          <text x="46" y="362" font-size="10.5" fill="var(--faint)">Fastest to set up; desktop-only except the Termux case.</text>
+          <text x="46" y="378" font-size="10.5" fill="var(--faint)">Nothing is exposed beyond your own network.</text>
+
+          <rect x="478" y="262" width="396" height="132" rx="10" fill="var(--surface)" stroke="var(--accent-2)"></rect>
+          <text x="494" y="284" font-size="12" font-weight="600" fill="var(--text)">Pick an HTTPS route</text>
+          <text x="494" y="304" font-size="11" fill="var(--muted)">§4 Tailscale — no domain, nothing public, easiest</text>
+          <text x="494" y="321" font-size="11" fill="var(--muted)">§5 Cloudflare Tunnel + Access — your own hostname</text>
+          <text x="494" y="338" font-size="11" fill="var(--muted)">§6 ngrok static domain — quickest public URL</text>
+          <text x="494" y="355" font-size="11" fill="var(--muted)">§7 Caddy / nginx on the host — if you already run one</text>
+          <text x="494" y="378" font-size="10.5" fill="var(--faint)">Every one of these works on desktop and mobile, over any network.</text>
+        </svg>
+      </div>
+      <figcaption><b>Figure 2 — pick a route in two questions.</b> One question decides HTTPS, the other decides which of the four HTTPS recipes fits the machine you already have.</figcaption>
+    </figure>
+
     <table>
       <thead><tr><th>Where Hermes runs</th><th>Where Obsidian runs</th><th>Route</th><th>Phones?</th><th>URL shape</th></tr></thead>
       <tbody>
@@ -223,6 +437,95 @@
       </tbody>
     </table>
     <p class="field">A rule that explains the whole table: <b>iOS and Android refuse plain HTTP to any host but the device itself</b> (App Transport Security / network security config). So HTTPS is what makes a phone work — and a route already serving HTTPS on 443 needs no port in the URL.</p>
+
+    <figure>
+      <div class="figure-frame">
+        <svg viewBox="0 0 900 366" role="img" aria-label="Coverage matrix comparing six routes across five requirements: desktop, phone, any network, no domain needed, and not publicly exposed.">
+          <text x="14" y="20" font-size="11.5" font-weight="620" fill="var(--faint)">ROUTE COVERAGE</text>
+
+          <!-- header -->
+          <text x="196" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">desktop</text>
+          <text x="288" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">phone /</text>
+          <text x="288" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">tablet</text>
+          <text x="392" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">any</text>
+          <text x="392" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">network</text>
+          <text x="500" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">no domain</text>
+          <text x="500" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">needed</text>
+          <text x="610" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">not public</text>
+          <text x="610" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">by default</text>
+          <text x="740" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">always-on</text>
+          <text x="740" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">service</text>
+
+          <line x1="14" y1="64" x2="886" y2="64" stroke="var(--border)"></line>
+
+          <!-- rows -->
+          <text x="14" y="90" font-size="12" fill="var(--text)">§2 Loopback</text>
+          <text x="196" y="90" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="288" y="90" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="392" y="90" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="500" y="90" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="610" y="90" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="740" y="90" font-size="11.5" fill="var(--faint)" text-anchor="middle">—</text>
+          <line x1="14" y1="102" x2="886" y2="102" stroke="var(--border)"></line>
+
+          <text x="14" y="128" font-size="12" fill="var(--text)">§3 LAN over HTTP</text>
+          <text x="196" y="128" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="288" y="128" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="392" y="128" font-size="13" fill="var(--warn)" text-anchor="middle">~</text>
+          <text x="500" y="128" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="610" y="128" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="740" y="128" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <line x1="14" y1="140" x2="886" y2="140" stroke="var(--border)"></line>
+
+          <text x="14" y="166" font-size="12" fill="var(--text)">§4 Tailscale</text>
+          <text x="196" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="288" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="392" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="500" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="610" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="740" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <line x1="14" y1="178" x2="886" y2="178" stroke="var(--border)"></line>
+
+          <text x="14" y="204" font-size="12" fill="var(--text)">§5 Cloudflare Tunnel</text>
+          <text x="196" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="288" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="392" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="500" y="204" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="610" y="204" font-size="12" fill="var(--ok)" text-anchor="middle">Access</text>
+          <text x="740" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <line x1="14" y1="216" x2="886" y2="216" stroke="var(--border)"></line>
+
+          <text x="14" y="242" font-size="12" fill="var(--text)">§6 ngrok static domain</text>
+          <text x="196" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="288" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="392" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="500" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="610" y="242" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="740" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <line x1="14" y1="254" x2="886" y2="254" stroke="var(--border)"></line>
+
+          <text x="14" y="280" font-size="12" fill="var(--text)">§7 Caddy / nginx proxy</text>
+          <text x="196" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="288" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="392" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="500" y="280" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="610" y="280" font-size="12" fill="var(--warn)" text-anchor="middle">yours to add</text>
+          <text x="740" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <line x1="14" y1="292" x2="886" y2="292" stroke="var(--border)"></line>
+
+          <text x="14" y="318" font-size="12" fill="var(--text)">§9 Hermes on the phone</text>
+          <text x="196" y="318" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="288" y="318" font-size="12" fill="var(--warn)" text-anchor="middle">that one</text>
+          <text x="392" y="318" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="500" y="318" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="610" y="318" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="740" y="318" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+
+          <text x="14" y="350" font-size="10.8" fill="var(--faint)">✓ works · ✗ blocked by the OS or by configuration · ~ works only on the same network · “any network” means the device can be on mobile data.</text>
+        </svg>
+      </div>
+      <figcaption><b>Figure 3 — the coverage matrix.</b> Requirements, not preferences: the ✗ marks are the operating system refusing cleartext, or a provider needing a domain you may not own. Read the column you cannot compromise on, then take the first row that satisfies it.</figcaption>
+    </figure>
 
     <h2 id="host">1 · Enable the API server on the Hermes host</h2>
     <p>On the machine that runs Hermes, put these in <code>~/.hermes/.env</code> (the enable flag and the key are environment variables — <b>not</b> <code>config.yaml</code> keys):</p>
@@ -358,6 +661,48 @@ hermes.example.com {
 
     <h2 id="profile">8 · Give the vault its own Hermes profile</h2>
     <p>By default the plugin talks to your <b>main</b> profile, so vault prompts and answers share the session store and long-term memory with everything else you do with Hermes. To keep vault work in one folder instead, use a profile — a profile <i>is</i> a separate directory:</p>
+
+    <figure>
+      <div class="figure-frame">
+        <svg viewBox="0 0 900 268" role="img" aria-label="Side-by-side comparison: without a profile, vault prompts share one state database with everything else; with a dedicated profile, vault work lives in its own folder and database.">
+          <text x="14" y="20" font-size="11.5" font-weight="620" fill="var(--faint)">WHERE THE TEXT LANDS ON THE HERMES HOST</text>
+
+          <!-- without -->
+          <rect x="14" y="36" width="418" height="218" rx="12" fill="var(--surface-quiet)" stroke="var(--border)"></rect>
+          <text x="32" y="60" font-size="12.5" font-weight="640" fill="var(--text)">Default profile</text>
+          <text x="32" y="78" font-size="11" fill="var(--faint)">~/.hermes/</text>
+
+          <rect x="32" y="92" width="382" height="44" rx="9" fill="none" stroke="var(--warn)"></rect>
+          <text x="46" y="112" font-size="11.5" fill="var(--text)">state.db — one database for everything</text>
+          <text x="46" y="128" font-size="10.5" fill="var(--faint)">vault chats · CLI sessions · gateway chats · cron runs</text>
+
+          <rect x="32" y="148" width="382" height="40" rx="9" fill="none" stroke="var(--warn)"></rect>
+          <text x="46" y="167" font-size="11.5" fill="var(--text)">memory/ — MEMORY.md · USER.md</text>
+          <text x="46" y="181" font-size="10.5" fill="var(--faint)">vault work can influence the same agent memory</text>
+
+          <text x="46" y="214" font-size="11" fill="var(--muted)">Same box; harder to tell vault traffic apart</text>
+          <text x="46" y="231" font-size="10.5" fill="var(--faint)">One key, one personality, one session list.</text>
+
+          <!-- with -->
+          <rect x="464" y="36" width="422" height="218" rx="12" fill="var(--surface-quiet)" stroke="var(--border)"></rect>
+          <text x="482" y="60" font-size="12.5" font-weight="640" fill="var(--text)">Dedicated profile</text>
+          <text x="482" y="78" font-size="11" fill="var(--faint)">~/.hermes/profiles/obsidian/</text>
+
+          <rect x="482" y="92" width="386" height="44" rx="9" fill="none" stroke="var(--ok)"></rect>
+          <text x="496" y="112" font-size="11.5" fill="var(--text)">state.db — only this vault's conversations</text>
+          <text x="496" y="128" font-size="10.5" fill="var(--faint)">its own session list, searchable and separable</text>
+
+          <rect x="482" y="148" width="386" height="40" rx="9" fill="none" stroke="var(--ok)"></rect>
+          <text x="496" y="167" font-size="11.5" fill="var(--text)">its own memory/ · SOUL.md · .env key</text>
+          <text x="496" y="181" font-size="10.5" fill="var(--faint)">its own model and provider, rotatable alone</text>
+
+          <text x="496" y="214" font-size="11" fill="var(--muted)">One folder holds everything vault-related</text>
+          <text x="496" y="231" font-size="10.5" fill="var(--faint)">/v1/models then advertises the profile name — your proof it routed.</text>
+        </svg>
+      </div>
+      <figcaption><b>Figure 5 — what "keep it in one folder" actually changes.</b> Both routes work identically; the difference is only where the prompts, answers, memory and session list live on the host.</figcaption>
+    </figure>
+
     <pre><code>~/.hermes/profiles/obsidian/
 ├── config.yaml     # its own model, provider, toolsets
 ├── .env            # its own API_SERVER_KEY (and API_SERVER_PORT)
@@ -402,6 +747,45 @@ API_SERVER_PORT=8643                # two profiles that both leave this unset co
 
     <h2 id="alive">11 · Keep it reachable</h2>
     <p>A permanent URL is only as permanent as the three layers behind it:</p>
+
+    <figure>
+      <div class="figure-frame">
+        <svg viewBox="0 0 900 246" role="img" aria-label="Stack diagram of four layers that must all stay up: the host not sleeping, the tunnel service, the Hermes gateway service, and the mobile network on the client side. Any one failing breaks the plugin.">
+          <text x="14" y="20" font-size="11.5" font-weight="620" fill="var(--faint)">THE CHAIN — EVERY LAYER MUST HOLD</text>
+
+          <rect x="14" y="34" width="580" height="42" rx="10" fill="var(--accent-soft)" stroke="var(--accent)"></rect>
+          <text x="30" y="53" font-size="12" font-weight="620" fill="var(--text)">Client — Obsidian</text>
+          <text x="30" y="68" font-size="10.8" fill="var(--muted)">the URL in settings · the key · any extra headers · HTTPS on mobile</text>
+          <text x="614" y="60" font-size="10.8" fill="var(--faint)">desktop + iOS + Android</text>
+
+          <rect x="14" y="86" width="580" height="42" rx="10" fill="var(--surface)" stroke="var(--accent-2)"></rect>
+          <text x="30" y="105" font-size="12" font-weight="620" fill="var(--text)">Tunnel / proxy — cloudflared · ngrok · Caddy</text>
+          <text x="30" y="120" font-size="10.8" fill="var(--muted)">installed as a service, so it starts at login or boot</text>
+          <text x="614" y="112" font-size="10.8" fill="var(--faint)">service install / start</text>
+
+          <rect x="14" y="138" width="580" height="42" rx="10" fill="var(--surface)" stroke="var(--border)"></rect>
+          <text x="30" y="157" font-size="12" font-weight="620" fill="var(--text)">Hermes gateway — the API server itself</text>
+          <text x="30" y="172" font-size="10.8" fill="var(--muted)">hermes gateway install &amp;&amp; start — not a terminal you keep open</text>
+          <text x="614" y="164" font-size="10.8" fill="var(--faint)">hermes gateway status</text>
+
+          <rect x="14" y="190" width="580" height="42" rx="10" fill="none" stroke="var(--warn)" stroke-dasharray="4 3"></rect>
+          <text x="30" y="209" font-size="12" font-weight="620" fill="var(--text)">Host — must not sleep</text>
+          <text x="30" y="224" font-size="10.8" fill="var(--muted)">pmset -a sleep 0 (macOS) · loginctl enable-linger (Linux) · an always-on box</text>
+          <text x="614" y="216" font-size="10.8" fill="var(--faint)">a sleeping laptop silently drops it</text>
+
+          <line x1="676" y1="34" x2="676" y2="232" stroke="var(--border)"></line>
+          <text x="700" y="62" font-size="11" fill="var(--err)">401 → the key</text>
+          <text x="700" y="86" font-size="11" fill="var(--err)">403 → Access policy</text>
+          <text x="700" y="110" font-size="11" fill="var(--err)">404 → URL or prefix</text>
+          <text x="700" y="134" font-size="11" fill="var(--warn)">timeout → asleep / wrong host</text>
+          <text x="700" y="158" font-size="11" fill="var(--muted)">one piece → proxy buffering</text>
+          <text x="700" y="182" font-size="11" fill="var(--muted)">↳ each failure names a layer</text>
+          <text x="700" y="206" font-size="10.5" fill="var(--faint)">(and Diagnostics has the log)</text>
+        </svg>
+      </div>
+      <figcaption><b>Figure 6 — four layers, and which error blames which.</b> Walking the stack outward is faster than re-typing the URL: every layer has its own status command, and the failure code usually already tells you which one broke.</figcaption>
+    </figure>
+
     <pre><code>hermes gateway install &amp;&amp; hermes gateway start    # 1. the API server as a service
 hermes gateway status                              #    per profile: hermes -p obsidian gateway status
 
@@ -458,6 +842,41 @@ sudo loginctl enable-linger "$USER"                #    Linux: services survive 
       <li>The plugin's own settings file and its export contain the API key and any extra headers <b>in plain text</b>, and a vault is usually synced. Keep those files private.</li>
       <li><b>Chat history</b> lives in <code>&lt;vault&gt;/.obsidian/plugins/hermes-agent-notes/history.json</code> (30 sessions, newest kept) and can be searched or cleared from the panel's 🕘 button.</li>
     </ul>
+
+    <h2 id="defaults">Appendix: defaults at a glance</h2>
+    <p class="field">The values the plugin ships with, so you know what you are changing when you change one. Everything on this page that mentions a limit is one of these.</p>
+
+    <figure>
+      <div class="figure-frame">
+        <svg viewBox="0 0 900 190" role="img" aria-label="Bar chart of the two waiting limits: the connection check is allowed 15 seconds, an answer is allowed 300 seconds (5 minutes), and 0 means unlimited.">
+          <text x="14" y="22" font-size="11.5" font-weight="620" fill="var(--faint)">HOW LONG THE PLUGIN WAITS BEFORE GIVING UP</text>
+
+          <text x="14" y="58" font-size="11.5" fill="var(--muted)">Connection check — /health, /v1/models, /v1/capabilities</text>
+          <rect x="14" y="66" width="44" height="20" rx="4" fill="var(--accent-2)"></rect>
+          <text x="66" y="81" font-size="11.5" fill="var(--text)">15 s</text>
+
+          <text x="14" y="112" font-size="11.5" fill="var(--muted)">An answer — one agent turn, tools included</text>
+          <rect x="14" y="120" width="580" height="20" rx="4" fill="var(--accent)"></rect>
+          <text x="602" y="135" font-size="11.5" fill="var(--text)">300 s (5 min)</text>
+
+          <text x="14" y="164" font-size="10.8" fill="var(--faint)">Same scale, drawn to length. Both are settings you can raise; 0 means “wait forever, I will press Stop myself”.</text>
+          <text x="14" y="180" font-size="10.8" fill="var(--faint)">A stalled address hits the 15 s limit and explains itself, instead of leaving the page looking frozen.</text>
+        </svg>
+      </div>
+      <figcaption><b>Figure 7 — the two waiting limits, to scale.</b> A probe is short so a typo cannot hang the settings page; an answer is long because a real agent turn legitimately takes minutes.</figcaption>
+    </figure>
+
+    <div class="stats">
+      <div class="stat accent"><b>30</b><span>conversations kept in the panel's history, newest first</span></div>
+      <div class="stat accent"><b>200</b><span>messages kept per conversation</span></div>
+      <div class="stat accent"><b>400 KB</b><span>ceiling for the whole history file</span></div>
+      <div class="stat"><b>12</b><span>saved connections (profiles) you can switch between</span></div>
+      <div class="stat"><b>40</b><span>quick prompts</span></div>
+      <div class="stat"><b>64 KB</b><span>error log cap — it drops its oldest half when full</span></div>
+      <div class="stat"><b>12</b><span>messages of chat memory sent as context</span></div>
+      <div class="stat"><b>16 px</b><span>input font size on mobile, so iOS does not zoom</span></div>
+    </div>
+    <p class="field">Three defaults that surprise people, all changeable under <b>Conversation</b>: <b>streaming is off</b> (it needs a CORS line on the server), <b>caveat stripping is on</b> (the assistant's “let me know if you'd like more…” never reaches a note), and <b>session reporting is on</b> (each conversation becomes a Hermes session — turn that off and nothing is stored server-side).</p>
 
     <h2 id="field">Appendix: what goes in each field</h2>
     <table>
