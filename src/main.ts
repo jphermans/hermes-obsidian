@@ -15,6 +15,15 @@ import { PromptModal } from "./ui/prompt-modal";
 import { PreviewModal } from "./ui/preview-modal";
 import { AnswerModal, AnswerActions } from "./ui/answer-modal";
 import { looksLikeNewNoteRequest } from "./intent";
+import {
+  applyableOps,
+  looksLikeFileOpRequest,
+  parseFileOps,
+  planListing,
+  validateFileOps,
+} from "./file-ops";
+import type { ValidatedOp } from "./file-ops";
+import { FileOpsModal } from "./ui/file-ops-modal";
 import { matchMentionedFile } from "./mentions";
 import { ErrorLog, describeForLog } from "./error-log";
 import type { ErrorEntry } from "./error-log";
@@ -57,6 +66,7 @@ import {
   NoteContext,
   chatUserPrompt,
   titleUserPrompt,
+  fileOpsUserPrompt,
   createUserPrompt,
   fixUserPrompt,
   rewriteUserPrompt,
@@ -170,6 +180,12 @@ export default class HermesAgentNotesPlugin extends Plugin {
         if (!checking) void this.selectionToNote(editor);
         return true;
       },
+    });
+
+    this.addCommand({
+      id: "file-operations",
+      name: "Copy, move or delete notes",
+      callback: () => void this.fileOpsInteractive(),
     });
 
     this.addCommand({
@@ -692,7 +708,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
     return result.content;
   }
 
-  private async askOnce(task: "create" | "rewrite" | "fix" | "answer" | "title", context: NoteContext, userPrompt: string): Promise<string> {
+  private async askOnce(task: "create" | "rewrite" | "fix" | "answer" | "title" | "fileops", context: NoteContext, userPrompt: string): Promise<string> {
     const client = this.client();
     const notice = new Notice("Hermes is working…", 0);
     try {
@@ -1198,6 +1214,128 @@ export default class HermesAgentNotesPlugin extends Plugin {
     } catch (error) {
       new Notice("Could not save the note: " + (error instanceof Error ? error.message : String(error)));
       await this.logError("Save as note", error, hint);
+    }
+  }
+
+  // --- copy, move and delete -----------------------------------------------
+
+  /**
+   * Plans copy / move / delete for a request, shows the exact operations for
+   * approval, and only then touches the vault. Returns a Markdown summary either
+   * way, so the chat can show what happened (or why nothing did).
+   */
+  async runFileOpRequest(request: string, heading = "File operations"): Promise<string> {
+    if (!this.settings.allowFileOps) {
+      return "Copying, moving and deleting notes is turned off in the plugin settings.";
+    }
+    const files = this.app.vault.getMarkdownFiles();
+    const listing = planListing(files, request, 300);
+    const context = await this.noteContext({ includeActive: false });
+    const raw = await this.askOnce(
+      "fileops",
+      context,
+      fileOpsUserPrompt(request, listing, listFolders(this.app).slice(0, 60))
+    );
+    const plan = parseFileOps(raw);
+    const ops = validateFileOps(plan.ops, files, listFolders(this.app));
+
+    if (applyableOps(ops).length === 0) {
+      const why = plan.note || (ops.length === 0 ? "Hermes did not find a file operation in that request." : "");
+      const reasons = ops
+        .filter((op) => op.skip)
+        .map((op) => "- " + op.label + " — " + op.skip)
+        .join("\n");
+      const dropped = plan.dropped > 0 ? "\n\n(only the first 25 operations were considered.)" : "";
+      return ["**Nothing to apply**" + (why ? " — " + why : ""), reasons ? "\n" + reasons : "", dropped]
+        .join("\n")
+        .trim();
+    }
+
+    const choice = await FileOpsModal.ask(this.app, {
+      heading,
+      note: plan.note,
+      ops,
+      allowPermanent: true,
+      startPermanent: this.settings.permanentDelete,
+    });
+    if (!choice) return "Cancelled — nothing in the vault was changed.";
+    return this.applyFileOperations(choice.ops, { permanentDelete: choice.permanentDelete });
+  }
+
+  /** The only place in the plugin that changes the vault's file layout. */
+  async applyFileOperations(
+    ops: ValidatedOp[],
+    options: { permanentDelete: boolean }
+  ): Promise<string> {
+    const done: string[] = [];
+    const failed: string[] = [];
+    for (const op of ops) {
+      if (op.skip) continue;
+      try {
+        const target = this.app.vault.getAbstractFileByPath(op.from);
+        if (!(target instanceof TFile)) throw new Error("that note is no longer in the vault");
+        if (op.op === "copy" && op.to) {
+          await this.app.vault.copy(target, op.to);
+          done.push("Copied `" + op.from + "` to `" + op.to + "`");
+        } else if (op.op === "move" && op.to) {
+          // Obsidian's own rename, so wikilinks and embeds follow the note.
+          await this.app.fileManager.renameFile(target, op.to);
+          done.push("Moved `" + op.from + "` to `" + op.to + "` (links updated)");
+        } else if (op.op === "delete") {
+          if (options.permanentDelete) {
+            await this.app.vault.delete(target, true);
+            done.push("Deleted `" + op.from + "` permanently");
+          } else {
+            await this.trashNote(target);
+            done.push("Moved `" + op.from + "` to the trash");
+          }
+        }
+      } catch (error) {
+        failed.push(op.label + " — " + (error instanceof Error ? error.message : String(error)));
+        await this.logError("File operation", error, op.label);
+      }
+    }
+
+    const lines: string[] = [];
+    if (done.length > 0) lines.push("**Done**", ...done.map((line) => "- " + line));
+    if (failed.length > 0) lines.push("", "**Failed**", ...failed.map((line) => "- " + line));
+    new Notice(
+      done.length +
+        " file operation" +
+        (done.length === 1 ? "" : "s") +
+        " applied" +
+        (failed.length > 0 ? ", " + failed.length + " failed (see Diagnostics)" : "."),
+      8000
+    );
+    return lines.length > 0 ? lines.join("\n") : "Nothing was changed.";
+  }
+
+  /**
+   * Obsidian's own delete: it honours the user's "Deleted files" preference
+   * (trash folder, system trash or permanent) instead of guessing.
+   */
+  private async trashNote(file: TFile): Promise<void> {
+    const manager = this.app.fileManager as unknown as { trashFile?: (file: TFile) => Promise<void> };
+    if (typeof manager.trashFile === "function") {
+      await manager.trashFile(file);
+      return;
+    }
+    await this.app.vault.trash(file, true);
+  }
+
+  private async fileOpsInteractive(): Promise<void> {
+    const answer = await PromptModal.ask(this.app, {
+      title: "Copy, move or delete notes",
+      placeholder: "e.g. move the boiler note into Archive, and delete the 2025 draft",
+      submitLabel: "Plan it",
+      rows: 3,
+    });
+    if (!answer) return;
+    try {
+      const summary = await this.runFileOpRequest(answer.prompt, "Copy, move or delete");
+      new AnswerModal(this.app, "File operations", summary, {}).open();
+    } catch (error) {
+      this.reportError(error);
     }
   }
 }

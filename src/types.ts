@@ -82,6 +82,10 @@ export interface HermesAgentNotesSettings {
   autoFrontmatter: boolean;
   /** Drop the assistant's caveats when an answer is written into a note. */
   stripCaveats: boolean;
+  /** Copy, move and delete notes on request, always with approval. */
+  allowFileOps: boolean;
+  /** Deletions go to the trash unless this is on. */
+  permanentDelete: boolean;
   includeActiveNote: boolean;
   maxHistoryMessages: number;
 
@@ -120,6 +124,8 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   openAfterCreate: true,
   autoFrontmatter: true,
   stripCaveats: true,
+  allowFileOps: true,
+  permanentDelete: false,
   includeActiveNote: true,
   maxHistoryMessages: 12,
 

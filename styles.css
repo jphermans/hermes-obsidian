@@ -624,6 +624,80 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   letter-spacing: 0.02em;
 }
 
+/* Copy / move / delete approval list. */
+.hermes-fileops-note {
+  margin: 0 0 8px;
+  font-size: var(--font-ui-small);
+  color: var(--hermes-muted);
+}
+
+.hermes-fileops {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.hermes-fileops-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border: 1px solid var(--hermes-border);
+  border-radius: 8px;
+  background: var(--hermes-surface-quiet);
+}
+
+.hermes-fileops-item.is-skipped {
+  opacity: 0.65;
+}
+
+.hermes-fileops-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 24px;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.hermes-fileops-item.is-skipped .hermes-fileops-label {
+  cursor: default;
+}
+
+.hermes-fileops-skip {
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-warn);
+}
+
+.hermes-fileops-mode {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.hermes-fileops-legend {
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hermes-fileops-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
 .hermes-msg .hermes-bubble > :first-child {
   margin-top: 0;
 }

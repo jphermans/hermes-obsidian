@@ -14,6 +14,7 @@ import type { MentionContext } from "../mentions";
 import type { TransportInfo } from "../main";
 import { filterCommands, isCommandInput, runCommand, SLASH_COMMANDS } from "../slash";
 import type { SlashAction } from "../slash";
+import { looksLikeFileOpRequest } from "../file-ops";
 import { SuggestDropdown } from "./suggest-dropdown";
 import { copyText } from "./clipboard";
 
@@ -321,7 +322,36 @@ export class HermesChatView extends ItemView {
     this.inputEl.value = "";
     this.suggest?.hide();
     this.entries.push({ role: "user", content: typed });
+    // "move the boiler note into Archive" is a file operation, not a question.
+    if (this.plugin.settings.allowFileOps && looksLikeFileOpRequest(outgoing)) {
+      await this.runFileOps(typed);
+      return;
+    }
     await this.runTurn(outgoing, typed);
+  }
+
+  /** Plans copy / move / delete, asks for approval, and reports what happened. */
+  private async runFileOps(request: string): Promise<void> {
+    this.busy = true;
+    this.setBusy(true);
+    this.pendingText = "";
+    this.createPending();
+    this.setPendingLabel("Planning file operations");
+    try {
+      const summary = await this.plugin.runFileOpRequest(request, "File operations");
+      this.entries.push({ role: "assistant", content: summary, noActions: true });
+    } catch (error) {
+      this.entries.push({ role: "assistant", content: "⚠️ " + describeError(error) });
+      if (this.pendingEl) this.pendingEl.remove();
+    } finally {
+      this.pendingEl = null;
+      this.pendingTextEl = null;
+      this.pendingSpinnerEl = null;
+      this.controller = null;
+      this.busy = false;
+      this.setBusy(false);
+      this.renderEntries();
+    }
   }
 
   private async runTurn(outgoing: string, typed: string): Promise<void> {

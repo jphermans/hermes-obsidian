@@ -169,6 +169,7 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 
 | Command | What it does |
 | --- | --- |
+| **Copy, move or delete notes** | Ask for a file operation — the plan is shown for approval, deletes go to the trash by default. |
 | **Open the chat panel** | Sidebar conversation with history, streaming and note actions. While Hermes works, an animated indicator pulses in the pending bubble instead of the word "Thinking…". |
 | **Create a note from a prompt** | Writes a complete new note — properties, headings, wikilinks, tags — for you to confirm. |
 | **Improve the active note** | Rewrites the open note, keeping every existing property, link and fact. |
@@ -234,6 +235,26 @@ Four things stop it, in order of likelihood:
 4. **The server ignores `stream: true`** and answers with JSON — *Verify streaming* says exactly that instead of calling the answer empty.
 
 Every refusal is written to the error log as well (Settings → Diagnostics), with the endpoint, so the reason is still there afterwards.
+
+## Copying, moving and deleting notes
+
+Ask in the chat — *"move the boiler note into Archive"*, *"duplicate the template for each room"*, *"delete the 2025 drafts"* — or run **Hermes: Copy, move or delete notes**. The division of labour is deliberate:
+
+1. **Hermes plans it.** Your request plus the real note paths go to the agent, which returns a literal plan (`move`, `copy`, `delete` with exact paths). It never touches the vault itself.
+2. **The plugin validates it against your vault.** Every path is resolved against notes that actually exist; anything it cannot do becomes a line with a reason instead of a guess.
+3. **You approve it.** A modal lists each operation with a tick box — untick anything you do not want — and deletions offer *Move to trash* (the default) or *Delete permanently*.
+
+What it refuses, on purpose:
+
+* overwriting an existing note — a destination that is taken is skipped, never clobbered;
+* notes that are not Markdown, and anything inside `.obsidian`;
+* paths that try to leave the vault (`..`);
+* ambiguous names (two notes called the same thing) — a path such as `House/Kitchen renovation.md` is the way to disambiguate;
+* more than 25 operations in one plan.
+
+A move goes through Obsidian's own rename, so **wikilinks and embeds follow the note**. A delete uses Obsidian's own delete, which honours your *Files & Links → Deleted files* preference. Every applied operation is reported in the chat, and every failure is written to the error log.
+
+Two settings under **Files**: *Copy, move and delete notes* (on by default — turn it off to remove the capability entirely) and *Deleting a note* (trash or permanent, which just preselects the radio button in the modal).
 
 ## Mobile
 

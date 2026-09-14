@@ -942,6 +942,145 @@ test("the transport label tells the truth about streaming", () => {
   assert.ok(hermes.transportLabel({ streamed: false, buffered: false, fellBack: false }).indexOf("streaming is off") >= 0);
 });
 
+// --- copy, move and delete --------------------------------------------------
+
+test("a file-operation plan is read from the model's JSON", () => {
+  const plan = hermes.parseFileOps(
+    '```json\n{"ops":[{"op":"move","from":"A.md","to":"Archive/A.md"},{"op":"delete","from":"B.md"}],"note":"tidying"}\n```'
+  );
+  assert.equal(plan.ops.length, 2);
+  assert.equal(plan.ops[0].op, "move");
+  assert.equal(plan.ops[0].to, "Archive/A.md");
+  assert.equal(plan.ops[1].op, "delete");
+  assert.equal(plan.note, "tidying");
+
+  const bare = hermes.parseFileOps(
+    '[{"op":"rename","from":"A.md","to":"B.md"},{"op":"duplicate","from":"C.md","to":"D.md"},{"op":"remove","from":"E.md"}]'
+  );
+  assert.deepEqual(bare.ops.map((op) => op.op), ["move", "copy", "delete"]);
+
+  assert.deepEqual(hermes.parseFileOps("I could not find that note.").ops, []);
+  assert.deepEqual(hermes.parseFileOps("").ops, []);
+
+  const many = [];
+  for (let index = 0; index < 40; index++) many.push({ op: "delete", from: "note-" + index + ".md" });
+  many.push({ op: "delete", from: "note-0.md" });
+  const capped = hermes.parseFileOps(JSON.stringify({ ops: many }));
+  assert.equal(capped.ops.length, hermes.MAX_FILE_OPS, "the plan must be capped");
+  assert.ok(capped.dropped >= 15, "dropped: " + capped.dropped);
+});
+
+const VAULT_FILES = [
+  { basename: "Kitchen renovation", path: "House/Kitchen renovation.md" },
+  { basename: "Boiler service", path: "Home/Boiler service.md" },
+  { basename: "Draft 2025", path: "Draft 2025.md" },
+  { basename: "photo", path: "Attachments/photo.png" },
+  { basename: "readme", path: ".obsidian/plugins/x/readme.md" },
+];
+
+test("file operations are resolved against the real vault", () => {
+  const valid = hermes.validateFileOps([{ op: "move", from: "Boiler service", to: "Archive/Boiler service" }], VAULT_FILES);
+  assert.equal(valid[0].skip, undefined);
+  assert.equal(valid[0].from, "Home/Boiler service.md");
+  assert.equal(valid[0].to, "Archive/Boiler service.md");
+  assert.ok(valid[0].label.indexOf("Move") === 0, valid[0].label);
+
+  // A folder the vault actually has means "into that folder"; a bare word that is
+  // not a folder is a new name.
+  const FOLDERS = ["Archive", "House"];
+  assert.equal(
+    hermes.validateFileOps([{ op: "copy", from: "Boiler service", to: "Archive" }], VAULT_FILES, FOLDERS)[0].to,
+    "Archive/Boiler service.md"
+  );
+  assert.equal(
+    hermes.validateFileOps([{ op: "copy", from: "Boiler service", to: "Archive/" }], VAULT_FILES, FOLDERS)[0].to,
+    "Archive/Boiler service.md"
+  );
+  assert.equal(
+    hermes.validateFileOps([{ op: "move", from: "Boiler service", to: "Archive/Boiler plant" }], VAULT_FILES, FOLDERS)[0].to,
+    "Archive/Boiler plant.md",
+    "a path without an extension is a note path, not a folder"
+  );
+  assert.equal(
+    hermes.validateFileOps([{ op: "copy", from: "Boiler service", to: "Boiler copy" }], VAULT_FILES, FOLDERS)[0].to,
+    "Boiler copy.md",
+    "a word the vault has no folder for is a name, not a folder"
+  );
+
+  // A new name is cleaned rather than refused.
+  const cleaned = hermes.validateFileOps([{ op: "move", from: "Draft 2025", to: "Draft 2025: final?" }], VAULT_FILES);
+  assert.equal(cleaned[0].skip, undefined, JSON.stringify(cleaned[0]));
+  assert.ok(cleaned[0].to.indexOf(":") < 0 && cleaned[0].to.indexOf("?") < 0, cleaned[0].to);
+  assert.ok(cleaned[0].to.endsWith(".md"), cleaned[0].to);
+});
+
+test("a file operation that cannot run says why instead of guessing", () => {
+  const cases = [
+    [{ op: "move", from: "Nowhere", to: "Archive/Nowhere" }, "no note matches"],
+    [{ op: "move", from: "Kitchen renovation", to: "Home/Boiler service.md" }, "already exists"],
+    [{ op: "move", from: "Kitchen renovation", to: "House/Kitchen renovation.md" }, "already is"],
+    [{ op: "delete", from: "photo" }, "only Markdown"],
+    [{ op: "delete", from: ".obsidian/plugins/x/readme.md" }, "off limits"],
+    [{ op: "move", from: "Kitchen renovation", to: "../../outside.md" }, "not valid"],
+    [{ op: "move", from: "Kitchen renovation" }, "no destination"],
+  ];
+  for (const entry of cases) {
+    const result = hermes.validateFileOps([entry[0]], VAULT_FILES);
+    assert.ok(
+      result[0].skip && result[0].skip.indexOf(entry[1]) >= 0,
+      JSON.stringify(result[0]) + " should mention " + entry[1]
+    );
+  }
+
+  // Two operations cannot claim the same destination.
+  const clash = hermes.validateFileOps(
+    [
+      { op: "move", from: "Boiler service", to: "Archive/Twin.md" },
+      { op: "move", from: "Draft 2025", to: "Archive/Twin.md" },
+    ],
+    VAULT_FILES
+  );
+  assert.equal(clash[0].skip, undefined);
+  assert.ok(clash[1].skip && clash[1].skip.indexOf("already exists") >= 0, JSON.stringify(clash[1]));
+});
+
+test("the plan listing puts the notes the request names first", () => {
+  const files = [
+    { basename: "Alpha", path: "Alpha.md" },
+    { basename: "Boiler service", path: "Home/Boiler service.md" },
+    { basename: "Charlie", path: "Charlie.md" },
+  ];
+  const listing = hermes.planListing(files, "move the boiler note into Archive");
+  assert.equal(listing[0], "Home/Boiler service.md");
+  assert.equal(listing.length, 3);
+  assert.equal(hermes.planListing(files, "x", 2).length, 2);
+});
+
+test("file-operation requests are told apart from questions", () => {
+  assert.equal(hermes.looksLikeFileOpRequest("move the boiler note into Archive"), true);
+  assert.equal(hermes.looksLikeFileOpRequest("delete the draft note"), true);
+  assert.equal(hermes.looksLikeFileOpRequest("copy [[Kitchen renovation]] to Archive"), true);
+  assert.equal(hermes.looksLikeFileOpRequest("What links should this note have?"), false);
+  assert.equal(hermes.looksLikeFileOpRequest("How do I delete notes in Obsidian?"), false);
+  assert.equal(hermes.looksLikeFileOpRequest("summarise this note"), false);
+  assert.equal(hermes.looksLikeFileOpRequest(""), false);
+});
+
+test("the summary counts only what will really happen", () => {
+  const ops = hermes.validateFileOps(
+    [
+      { op: "move", from: "Boiler service", to: "Archive/Boiler service" },
+      { op: "copy", from: "Draft 2025", to: "Archive/Draft 2025" },
+      { op: "delete", from: "Nowhere" },
+    ],
+    VAULT_FILES
+  );
+  const summary = hermes.summarizeFileOps(ops);
+  assert.ok(summary.indexOf("1 moved") >= 0, summary);
+  assert.ok(summary.indexOf("1 copied") >= 0, summary);
+  assert.ok(summary.indexOf("1 skipped") >= 0, summary);
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

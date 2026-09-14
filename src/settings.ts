@@ -540,6 +540,42 @@ export class HermesSettingTab extends PluginSettingTab {
           void this.plugin.saveSettings();
         })
       );
+
+    this.renderFileOps(containerEl);
+  }
+
+  /** Copy, move and delete: the one capability that changes the vault's layout. */
+  private renderFileOps(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName("Files").setHeading();
+
+    new Setting(containerEl)
+      .setName("Copy, move and delete notes")
+      .setDesc(
+        "Ask in the chat (\"move the boiler note into Archive\") or run the command, and Hermes plans the operations. Nothing changes until you approve a list of exact paths: existing notes are never overwritten, wikilinks follow a move, and vault configuration is off limits."
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.allowFileOps).onChange((value) => {
+          this.plugin.settings.allowFileOps = value;
+          void this.plugin.saveSettings();
+          this.display();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Deleting a note")
+      .setDesc(
+        "Move to trash uses Obsidian's own delete, so it follows your \"Deleted files\" setting (Obsidian trash folder or system trash) and can be undone. Delete permanently cannot be undone."
+      )
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("trash", "Move to trash (recoverable)")
+          .addOption("permanent", "Delete permanently")
+          .setValue(this.plugin.settings.permanentDelete ? "permanent" : "trash")
+          .onChange((value) => {
+            this.plugin.settings.permanentDelete = value === "permanent";
+            void this.plugin.saveSettings();
+          })
+      );
   }
 
   // --- conventions ---------------------------------------------------------

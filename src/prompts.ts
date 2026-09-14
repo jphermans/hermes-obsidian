@@ -11,7 +11,7 @@ import type { VaultConventions } from "./types";
 
 const FENCE = "```";
 
-export type NoteTask = "create" | "rewrite" | "fix" | "answer" | "chat" | "title";
+export type NoteTask = "create" | "rewrite" | "fix" | "answer" | "chat" | "title" | "fileops";
 
 export interface NoteContext {
   vaultName: string;
@@ -210,6 +210,10 @@ export function systemPrompt(task: NoteTask, context: NoteContext): string {
     parts.push(
       "Your job: return the FULL improved note as a complete file. Keep every fact, link and file name that already exists unless the user asked to change it: this output replaces the file on disk. Improve structure, wording, tag and link correctness, and Obsidian syntax. Never drop content silently."
     );
+  } else if (task === "fileops") {
+    parts.push(
+      "Your job: turn a plain-language request into a precise plan of file operations (copy, move, rename or delete notes). You never perform anything yourself — a human approves the plan first, so the plan must be complete and literal."
+    );
   } else if (task === "title") {
     parts.push(
       "Your job: name an existing note. Answer with the title only — one line, no quotes, no markdown, no trailing punctuation, at most 8 words. The title must describe what the note is actually about. Never title a note after the assistant or after a generic word: no \"Hermes\", \"AI\", \"Assistant\", \"Answer\", \"Note\" or \"Untitled\"."
@@ -301,6 +305,32 @@ export function mentionedBlock(context: NoteContext): string {
   for (const note of notes) {
     lines.push("", "### " + note.path, "", note.content);
   }
+  return lines.join("\n");
+}
+
+export function fileOpsUserPrompt(request: string, notePaths: string[], folders: string[]): string {
+  const lines = [
+    "Plan the file operations this request asks for.",
+    "",
+    "Request: " + request.trim(),
+    "",
+    "Notes that exist — use these paths exactly as written:",
+  ];
+  if (notePaths.length === 0) lines.push("(the vault has no notes yet)");
+  for (const path of notePaths) lines.push("- " + path);
+  lines.push("", "Folders that exist: " + (folders.length > 0 ? folders.join(", ") : "(none yet)"));
+  lines.push(
+    "",
+    "Answer with JSON only, in exactly this shape:",
+    '{"ops":[{"op":"move","from":"House/Kitchen renovation.md","to":"Archive/Kitchen renovation.md"}],"note":"one short sentence about what you are doing"}',
+    "",
+    "Rules:",
+    "- op is move, copy or delete. from must be one of the paths above, spelled exactly like it.",
+    "- to is the destination path for move and copy, ending in .md. A folder name on its own means 'into that folder'.",
+    "- Never invent a note. Never use a path containing .obsidian. Never plan more than 25 operations.",
+    "- If nothing is really being asked for, or the request is too vague to resolve, answer with {\"ops\":[],\"note\":\"why\"}.",
+    "- Do not explain outside the JSON."
+  );
   return lines.join("\n");
 }
 

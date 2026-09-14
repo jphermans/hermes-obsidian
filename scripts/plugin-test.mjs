@@ -385,6 +385,92 @@ await test("a refused stream falls back, says so, and is logged", async () => {
   }
 });
 
+// --- copy, move and delete (its own vault, since these tests change files) ---
+
+const fileApp = hermes.makeAppObject([
+  {
+    path: "Kitchen renovation.md",
+    content: "---\ntitle: Kitchen renovation\n---\n\n# Kitchen renovation\n\nSee [[Boiler service]]\n",
+  },
+  { path: "Notes/Boiler service.md", content: "# Boiler service\n\nBack to [[Kitchen renovation]]\n" },
+]);
+
+async function makeFilePlugin() {
+  const plugin = new hermes.HermesAgentNotesPlugin(fileApp, { id: "hermes-agent-notes", version: "test" });
+  await plugin.onload();
+  plugin.settings = Object.assign({}, plugin.settings, { baseUrl: server.baseUrl, apiKey: "test-key" });
+  return plugin;
+}
+
+function pathsOf() {
+  return fileApp.vault.getMarkdownFiles().map((file) => file.path);
+}
+
+await test("a move renames the note and its wikilinks follow", async () => {
+  const plugin = await makeFilePlugin();
+  const ops = hermes.validateFileOps(
+    [{ op: "move", from: "Notes/Boiler service.md", to: "Archive/Boiler plant" }],
+    fileApp.vault.getMarkdownFiles()
+  );
+  assert.equal(ops[0].skip, undefined, JSON.stringify(ops[0]));
+
+  const summary = await plugin.applyFileOperations(ops, { permanentDelete: false });
+  assert.ok(summary.indexOf("Moved") >= 0, summary);
+  assert.ok(pathsOf().indexOf("Archive/Boiler plant.md") >= 0, "missing the new path: " + JSON.stringify(pathsOf()));
+  assert.equal(fileApp.vault.getAbstractFileByPath("Notes/Boiler service.md"), null, "the old path is still there");
+  assert.deepEqual(fileApp.fileOps.renamed, [{ from: "Notes/Boiler service.md", to: "Archive/Boiler plant.md" }]);
+
+  const kitchen = await fileApp.vault.read(fileApp.vault.getAbstractFileByPath("Kitchen renovation.md"));
+  assert.ok(kitchen.indexOf("[[Boiler plant]]") >= 0, "the wikilink did not follow the rename: " + kitchen);
+});
+
+await test("a copy leaves the original alone", async () => {
+  const plugin = await makeFilePlugin();
+  const ops = hermes.validateFileOps(
+    [{ op: "copy", from: "Kitchen renovation.md", to: "Archive/Kitchen renovation" }],
+    fileApp.vault.getMarkdownFiles()
+  );
+  const summary = await plugin.applyFileOperations(ops, { permanentDelete: false });
+  assert.ok(summary.indexOf("Copied") >= 0, summary);
+  const copy = fileApp.vault.getAbstractFileByPath("Archive/Kitchen renovation.md");
+  assert.ok(copy, "the copy was not created: " + JSON.stringify(pathsOf()));
+  const original = await fileApp.vault.read(fileApp.vault.getAbstractFileByPath("Kitchen renovation.md"));
+  const duplicate = await fileApp.vault.read(copy);
+  assert.equal(duplicate, original, "the copy should match the original");
+  assert.equal(fileApp.fileOps.renamed.length, 1, "a copy must not be a rename");
+});
+
+await test("a delete goes to the trash unless it is asked to be permanent", async () => {
+  const plugin = await makeFilePlugin();
+  const trashed = hermes.validateFileOps([{ op: "delete", from: "Archive/Kitchen renovation.md" }], fileApp.vault.getMarkdownFiles());
+  const summary = await plugin.applyFileOperations(trashed, { permanentDelete: false });
+  assert.ok(summary.indexOf("trash") >= 0, summary);
+  assert.deepEqual(fileApp.fileOps.trashed, ["Archive/Kitchen renovation.md"], "Obsidian's own delete should be used");
+  assert.deepEqual(fileApp.fileOps.deleted, [], "nothing may be deleted permanently by default");
+  assert.equal(fileApp.vault.getAbstractFileByPath("Archive/Kitchen renovation.md"), null);
+
+  const permanent = hermes.validateFileOps([{ op: "delete", from: "Archive/Boiler plant.md" }], fileApp.vault.getMarkdownFiles());
+  await plugin.applyFileOperations(permanent, { permanentDelete: true });
+  assert.deepEqual(fileApp.fileOps.deleted, ["Archive/Boiler plant.md"]);
+});
+
+await test("a refused operation changes nothing", async () => {
+  const plugin = await makeFilePlugin();
+  // Create the obstacle inside the test, so it does not depend on what earlier
+  // tests left behind.
+  await fileApp.vault.create("Target.md", "# Target\n");
+  const before = JSON.stringify(pathsOf());
+  const ops = hermes.validateFileOps(
+    [{ op: "move", from: "Kitchen renovation.md", to: "Target" }],
+    fileApp.vault.getMarkdownFiles()
+  );
+  assert.ok(ops[0].skip && ops[0].skip.indexOf("already exists") >= 0, JSON.stringify(ops[0]));
+  const summary = await plugin.applyFileOperations(ops, { permanentDelete: false });
+  assert.ok(summary.indexOf("Nothing was changed") >= 0, summary);
+  assert.equal(JSON.stringify(pathsOf()), before, "the vault must be untouched");
+  assert.equal(fileApp.fileOps.renamed.length, 1, "no extra rename may happen");
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");
