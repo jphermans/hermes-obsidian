@@ -94,6 +94,8 @@ The first returns `{"status": "ok"}`; the second lists the agent as a model. A `
 
 Press **Test connection**. A green card with the advertised model name means you are connected.
 
+Then type a prompt in **Ask Hermes** (just below the connection fields) and press *Send to Hermes*: the answer appears in place, with the model, the round-trip time and whether it streamed. That goes through the plugin's normal path — Obsidian rules, your vault conventions, session headers — so it proves the whole chain works, not just that the port is open. It writes nothing to the vault, and it is the quickest way to check a new route from a phone. Four sample prompts are one click away, including *Describe my vault's style*, which shows whether the vault scan reached Hermes.
+
 ### Remote instances
 
 * Bind beyond loopback (`API_SERVER_HOST=0.0.0.0`) or publish it through a tunnel, then use that address in the plugin.
@@ -225,6 +227,7 @@ npm test         # unit tests + API/SSE tests against a mock Hermes server
 
 * `scripts/selftest.mjs` — URL handling, file-name sanitising, model-output unwrapping, frontmatter split/merge, the syntax validator, prompt construction, the vault-convention scan, and real writes against an in-memory vault.
 * `scripts/mock-server-test.mjs` — the shipped client against a mock Hermes API server: `/health`, `/v1/models`, `/v1/capabilities`, buffered and SSE completions, headers, and the 401/404 error mapping.
+* `scripts/plugin-test.mjs` — boots the real plugin (`onload`) against that mock server and drives `testConnection`, the setup page's quick prompt (buffered and streamed), the auth-failure path and the vault scan end to end.
 * `scripts/vault-dryrun.mjs <vaultPath> [sample]` — runs the convention engine over a real vault and prints exactly what Hermes would be told.
 * `scripts/setup-labels.sh [owner/repo]` — applies this repo's label taxonomy (idempotent, updates in place, deletes nothing).
 

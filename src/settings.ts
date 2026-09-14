@@ -6,6 +6,27 @@ import type { AccessMode } from "./types";
 import { copyText } from "./ui/clipboard";
 import { listFolders } from "./vault-rules";
 
+/** One-click prompts for the setup page's prompt box. */
+const PROMPT_SAMPLES: { label: string; prompt: string }[] = [
+  {
+    label: "Which model are you?",
+    prompt: "Answer in one short line: which model and provider are you running as right now?",
+  },
+  {
+    label: "Which tools do you have?",
+    prompt: "List the toolsets you have available, one per line, at most 10 lines.",
+  },
+  {
+    label: "Describe my vault's style",
+    prompt:
+      "In two sentences, describe the note style of this vault, based on the vault conventions you were given.",
+  },
+  {
+    label: "Draft a note title",
+    prompt: "Suggest five possible note titles for a note about a kitchen renovation, as a plain list.",
+  },
+];
+
 export class HermesSettingTab extends PluginSettingTab {
   plugin: HermesAgentNotesPlugin;
 
@@ -21,6 +42,7 @@ export class HermesSettingTab extends PluginSettingTab {
 
     this.renderConnection(containerEl);
     this.renderRemoteAccess(containerEl);
+    this.renderPromptTest(containerEl);
     this.renderNotes(containerEl);
     this.renderConventions(containerEl);
     this.renderGuide(containerEl);
@@ -620,6 +642,85 @@ export class HermesSettingTab extends PluginSettingTab {
         (Platform.isDesktop ? "desktop" : "mobile") +
         " · docs at hermes-agent.nousresearch.com/docs/user-guide/features/api-server",
     });
+  }
+
+  // --- prompt box ----------------------------------------------------------
+
+  private renderPromptTest(containerEl: HTMLElement): void {
+    containerEl.createEl("h2", { text: "Ask Hermes" });
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text:
+        "Type a prompt and read the answer right here. It travels the plugin's normal path — the Obsidian rules, your vault conventions and the session headers are all included — so a reply proves the whole chain works, not just that the port is open. Nothing is written to the vault.",
+    });
+
+    const input = containerEl.createEl("textarea", { cls: "hermes-prompt-input" });
+    input.rows = 3;
+    input.placeholder = "Ask Hermes anything…";
+    input.setAttr("spellcheck", "false");
+    input.setAttr("autocomplete", "off");
+
+    const sampleRow = containerEl.createDiv({ cls: "hermes-notes-buttons" });
+    for (const sample of PROMPT_SAMPLES) {
+      const chip = sampleRow.createEl("button", { text: sample.label, cls: "hermes-example-btn" });
+      chip.setAttr("title", sample.prompt);
+      chip.addEventListener("click", () => {
+        input.value = sample.prompt;
+        if (!Platform.isMobile) input.focus();
+      });
+    }
+
+    const actionRow = containerEl.createDiv({ cls: "hermes-notes-buttons" });
+    const send = actionRow.createEl("button", { text: "Send to Hermes", cls: "mod-cta" });
+    const openChat = actionRow.createEl("button", { text: "Open chat panel" });
+    openChat.addEventListener("click", () => void this.plugin.activateChatView());
+
+    const box = containerEl.createDiv({ cls: "hermes-answer-box" });
+
+    send.addEventListener("click", () => void this.sendPrompt(input, send, box));
+    input.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        void this.sendPrompt(input, send, box);
+      }
+    });
+  }
+
+  private async sendPrompt(input: HTMLTextAreaElement, button: HTMLButtonElement, box: HTMLElement): Promise<void> {
+    const prompt = input.value.trim();
+    if (!prompt) {
+      new Notice("Type a prompt first.");
+      return;
+    }
+    button.setText("Sending…");
+    button.setAttr("disabled", "true");
+    box.empty();
+    box.removeClass("is-error");
+    const meta = box.createDiv({ cls: "hermes-notes-path" });
+    meta.setText("Waiting for Hermes…");
+    const answer = box.createEl("pre", { cls: "hermes-answer-text" });
+
+    try {
+      const result = await this.plugin.quickPrompt(prompt, (_delta, full) => {
+        answer.setText(full);
+        meta.setText("Streaming…");
+      });
+      answer.setText(result.text);
+      meta.setText(
+        result.model +
+          " · " +
+          result.ms +
+          " ms · " +
+          (result.streamed ? "streamed" : "buffered through Obsidian's HTTP client")
+      );
+    } catch (error) {
+      answer.remove();
+      box.addClass("is-error");
+      meta.setText("Failed: " + describeError(error));
+    } finally {
+      button.setText("Send to Hermes");
+      button.removeAttribute("disabled");
+    }
   }
 
   private codeBlock(parent: HTMLElement, lines: string[], label: string): void {

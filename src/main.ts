@@ -238,6 +238,59 @@ export default class HermesAgentNotesPlugin extends Plugin {
     return models;
   }
 
+  /**
+   * One plain prompt with no note attached, used by the setup page's prompt box.
+   * Goes through the normal path — Obsidian rules, vault conventions, session
+   * headers — so a reply proves the whole chain works, not just /health.
+   */
+  async quickPrompt(
+    prompt: string,
+    onDelta?: (delta: string, full: string) => void
+  ): Promise<{ text: string; ms: number; model: string; streamed: boolean }> {
+    const started = Date.now();
+    const context = await this.noteContext({ includeActive: false });
+    const client = this.client();
+    const messages: ChatMessage[] = [{ role: "user", content: chatUserPrompt(prompt, context) }];
+    const base: ChatOptions = {
+      system: systemPrompt("chat", context),
+      sessionId: this.sessionId,
+      sessionKey: this.sessionKey(),
+    };
+
+    let text = "";
+    let model = this.modelLabel();
+    let streamed = false;
+
+    if (this.settings.streaming && onDelta) {
+      try {
+        const result = await client.chatStream(messages, Object.assign({}, base), onDelta);
+        text = result.content;
+        model = result.model || model;
+        streamed = true;
+      } catch (error) {
+        if (error instanceof HermesError && error.kind === "aborted") throw error;
+        console.warn("[Hermes Agent Notes] streaming failed in the setup page", error);
+        new Notice("Streaming was refused — using the standard transport.", 6000);
+      }
+    }
+    if (!text) {
+      const result = await client.chat(messages, base);
+      text = result.content;
+      model = result.model || model;
+    }
+
+    const ms = Date.now() - started;
+    this.settings.connection = {
+      ok: true,
+      at: Date.now(),
+      detail: "Verified by a live prompt in " + ms + " ms.",
+      model,
+      models: this.settings.availableModels,
+    };
+    await this.saveSettings();
+    return { text, ms, model, streamed };
+  }
+
   private refreshStatusBar(): void {
     if (!this.statusBarEl) return;
     const ok = !!(this.settings.connection && this.settings.connection.ok);

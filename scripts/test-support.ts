@@ -73,5 +73,14 @@ export function makeApp(files: FakeFile[]) {
 
 export function makeAppObject(files: FakeFile[]) {
   const { vault } = makeApp(files);
-  return { vault } as unknown as import("obsidian").App;
+  const workspace = {
+    getActiveViewOfType: () => null,
+    on: () => ({}),
+    getLeavesOfType: () => [],
+    getRightLeaf: () => null,
+    getLeaf: () => null,
+    revealLeaf() {},
+    detachLeavesOfType() {},
+  };
+  return { vault, workspace } as unknown as import("obsidian").App;
 }

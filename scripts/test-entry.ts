@@ -7,3 +7,4 @@ export * from "../src/note-writer";
 export * from "../src/validate";
 export { Platform, setPlatform } from "obsidian";
 export { makeApp, makeAppObject } from "./test-support";
+export { default as HermesAgentNotesPlugin } from "../src/main";

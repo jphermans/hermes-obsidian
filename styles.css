@@ -162,6 +162,51 @@ body.theme-light .hermes-statusbar {
   font-size: var(--font-ui-smaller);
 }
 
+.hermes-settings .hermes-prompt-input {
+  width: 100%;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hermes-border);
+  background: var(--hermes-surface-strong);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--font-ui-small);
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.hermes-settings .hermes-prompt-input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+}
+
+.hermes-settings .hermes-prompt-input::placeholder {
+  color: var(--hermes-faint);
+}
+
+.hermes-answer-box {
+  margin-top: 10px;
+}
+
+.hermes-answer-box .hermes-answer-text {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--hermes-border);
+  background: var(--hermes-surface-strong);
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.hermes-answer-box.is-error .hermes-notes-path {
+  color: var(--hermes-bad);
+}
+
 .hermes-guide-list {
   margin: 6px 0 14px 18px;
   color: var(--hermes-muted);
@@ -569,7 +614,8 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   /* 16px keeps iOS from zooming the viewport when a field takes focus. */
   .hermes-notes-modal .hermes-notes-textarea,
   .hermes-notes-modal .hermes-notes-raw,
-  .hermes-chat-input {
+  .hermes-chat-input,
+  .hermes-settings .hermes-prompt-input {
     font-size: 16px;
   }
 
