@@ -841,6 +841,12 @@ export class HermesSettingTab extends PluginSettingTab {
     );
     const profileNotes = steps.createEl("ul", { cls: "hermes-guide-list" });
     profileNotes.createEl("li", {
+      text: "Create the profile on the Hermes host first — the plugin only sends requests, so it cannot create one and cannot check whether one exists. Until the profile exists and its API server is listening you will see 404 (wrong port, or a prefix for a profile that is not being served) or 401 (a key belonging to another profile). You can start on your default profile today and switch later — the connection is only settings.",
+    });
+    profileNotes.createEl("li", {
+      text: "No shell handy? hermes dashboard → Profiles creates, activates and deletes profiles; the desktop app has the same page.",
+    });
+    profileNotes.createEl("li", {
       text: "Its own port (simplest): put http://<host>:8643 and that profile's key in the fields above, and leave the profile prefix empty.",
     });
     profileNotes.createEl("li", {

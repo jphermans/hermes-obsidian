@@ -172,6 +172,8 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 
 By default the plugin talks to your **main** Hermes profile, so every prompt and answer from this vault is stored in the same session store and memory as everything else you do with Hermes — `hermes sessions` lists them side by side. If you would rather keep vault work in one place on the Hermes host, give it its own **profile**. A profile *is* a separate folder:
 
+**Create it first — on the Hermes host.** The profile is a host-side thing: the plugin only sends HTTP requests, so it cannot create one for you, and it cannot check whether one exists. Until the profile exists *and* its API server is listening, the plugin has nothing to talk to — you will see HTTP **404** (wrong port or a prefix for a profile that is not being served) or **401** (a key belonging to another profile). You do **not** have to do this before installing or configuring the plugin, though: start on your default profile and switch later, because the whole connection is just settings. `obsidian` below is an example name — use your own. No shell handy? `hermes dashboard` → **Profiles** creates, activates and deletes profiles too, and the desktop app has the same page.
+
 ```
 ~/.hermes/profiles/obsidian/
 ├── config.yaml     # its own model, provider, toolsets
@@ -369,7 +371,7 @@ Both files contain your **API key and any extra headers** in plain text, because
 | --- | --- |
 | **Connection failed — could not reach Hermes** | Is `hermes gateway` running with `API_SERVER_ENABLED=true`? Is the host/port right, and reachable from this device? |
 | **HTTP 401 / rejected the request** | The API key does not match `API_SERVER_KEY` on the host. |
-| **HTTP 404** | Wrong base URL, or a profile prefix set while the gateway is not running in multi-profile mode. Remove any `/v1` suffix from the URL. |
+| **HTTP 404** | Wrong base URL, or a profile prefix set while the gateway is not running in multi-profile mode. Remove any `/v1` suffix from the URL. Also: a profile that does not exist yet (or one whose API server is not listening) answers 404 — create it on the Hermes host first, the plugin cannot do that for you. |
 | **HTTP 429** | Too many concurrent runs on the Hermes side — retry, or raise `gateway.api_server.max_concurrent_runs`. |
 | **No model in the dropdown** | Harmless: `/v1/models` advertises one agent name. Press *Test connection* and use that name. |
 | **Streaming was refused** | Add the `API_SERVER_CORS_ORIGINS` line above and restart the gateway, or turn streaming off. |
