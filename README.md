@@ -218,6 +218,7 @@ npm test         # unit tests + API/SSE tests against a mock Hermes server
 * `scripts/selftest.mjs` — URL handling, file-name sanitising, model-output unwrapping, frontmatter split/merge, the syntax validator, prompt construction, the vault-convention scan, and real writes against an in-memory vault.
 * `scripts/mock-server-test.mjs` — the shipped client against a mock Hermes API server: `/health`, `/v1/models`, `/v1/capabilities`, buffered and SSE completions, headers, and the 401/404 error mapping.
 * `scripts/vault-dryrun.mjs <vaultPath> [sample]` — runs the convention engine over a real vault and prints exactly what Hermes would be told.
+* `scripts/setup-labels.sh [owner/repo]` — applies this repo's label taxonomy (idempotent, updates in place, deletes nothing).
 
 Layout: `src/main.ts` (plugin, commands), `src/settings.ts` (setup page), `src/hermes-client.ts` (API client, transports), `src/vault-rules.ts` (vault scan), `src/prompts.ts` (Obsidian rules + context), `src/note-writer.ts` (names, frontmatter, writes), `src/validate.ts` (syntax checks), `src/ui/*` (modals and chat panel).
 
