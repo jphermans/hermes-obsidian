@@ -27,6 +27,12 @@ import {
   sanitizeFilename,
   serializeNote,
   titleFromNote,
+  declaredTitle,
+  contentTitle,
+  usableFallbackTitle,
+  isPlaceholderTitle,
+  normalizeTitle,
+  truncateTitle,
   uniquePath,
   unwrapFence,
   writeNote,
@@ -50,6 +56,7 @@ import {
 import {
   NoteContext,
   chatUserPrompt,
+  titleUserPrompt,
   createUserPrompt,
   fixUserPrompt,
   rewriteUserPrompt,
@@ -665,7 +672,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
     return result.content;
   }
 
-  private async askOnce(task: "create" | "rewrite" | "fix" | "answer", context: NoteContext, userPrompt: string): Promise<string> {
+  private async askOnce(task: "create" | "rewrite" | "fix" | "answer" | "title", context: NoteContext, userPrompt: string): Promise<string> {
     const client = this.client();
     const notice = new Notice("Hermes is working…", 0);
     try {
@@ -1062,6 +1069,23 @@ export default class HermesAgentNotesPlugin extends Plugin {
     }
   }
 
+  /**
+   * Asks Hermes to name a note that arrived without one. The answer is validated
+   * against the placeholder list, so "Hermes", "Answer" or "Untitled" can never
+   * become a file name; an unusable answer simply yields no title.
+   */
+  private async askForTitle(content: string): Promise<string> {
+    try {
+      const context = await this.noteContext({ includeActive: false });
+      const raw = await this.askOnce("title", context, titleUserPrompt(content.slice(0, 6000)));
+      const title = truncateTitle(normalizeTitle(raw), 10, 70);
+      return isPlaceholderTitle(title) ? "" : title;
+    } catch (error) {
+      await this.logError("Title request", error);
+      return "";
+    }
+  }
+
   async saveTextAsNote(text: string, hint: string): Promise<void> {
     const cleaned = this.cleanAnswer(text);
     // Answers get the fence treatment only: their conversational cleanup is the
@@ -1071,7 +1095,14 @@ export default class HermesAgentNotesPlugin extends Plugin {
       new Notice("There is nothing to save.");
       return;
     }
-    const title = titleFromNote(note, hint);
+    // The title must come from the note itself — the properties or H1 the agent
+    // wrote, otherwise the agent is asked to name it. Never a stand-in such as
+    // "Hermes answer", and never the raw request ("make it shorter").
+    let title = declaredTitle(note);
+    if (title.length === 0) title = await this.askForTitle(note);
+    if (title.length === 0) title = contentTitle(note);
+    if (title.length === 0) title = usableFallbackTitle(hint);
+    if (title.length === 0) title = "Untitled note";
     const fileName = sanitizeFilename(applyFilenameStyle(sanitizeFilename(title), this.settings.filenameStyle));
     const folder = this.settings.defaultFolder;
     const path = uniquePath(this.app, folder, fileName);

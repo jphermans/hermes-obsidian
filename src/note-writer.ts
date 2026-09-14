@@ -197,26 +197,216 @@ function firstHeading(body: string): string {
   return "";
 }
 
-export function titleFromNote(content: string, fallback: string): string {
+/** Characters a model wraps a title in, stripped from both ends. */
+const TITLE_JUNK = "`*_\"'“”‘’[]()#";
+
+/** Collapses a title to one clean line: no hashes, quotes, markdown or colons. */
+export function normalizeTitle(raw: string): string {
+  let text = (raw || "").split("\n")[0].trim();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    while (text.length > 0 && TITLE_JUNK.indexOf(text.charAt(0)) >= 0) {
+      text = text.slice(1).trim();
+      changed = true;
+    }
+    while (text.length > 0 && TITLE_JUNK.indexOf(text.charAt(text.length - 1)) >= 0) {
+      text = text.slice(0, -1).trim();
+      changed = true;
+    }
+  }
+  while (text.endsWith(":") || text.endsWith(".")) text = text.slice(0, -1).trim();
+  if (text.toLowerCase().startsWith("title:")) text = text.slice(6).trim();
+  return text.split("\t").join(" ").split(" ").filter((word) => word.length > 0).join(" ");
+}
+
+/** Stand-ins that say nothing about the note. */
+const PLACEHOLDER_TITLES = [
+  "hermes",
+  "hermes answer",
+  "hermes reply",
+  "hermes note",
+  "hermes agent",
+  "hermes agent notes",
+  "answer",
+  "the answer",
+  "reply",
+  "response",
+  "output",
+  "assistant",
+  "the assistant",
+  "ai",
+  "ai answer",
+  "ai note",
+  "note",
+  "new note",
+  "my note",
+  "untitled",
+  "untitled note",
+  "document",
+  "markdown",
+  "content",
+];
+
+/**
+ * True for titles that name the assistant or say nothing: a note must be named
+ * after what is in it, never "Hermes answer" or "Untitled".
+ */
+export function isPlaceholderTitle(title: string): boolean {
+  const cleaned = normalizeTitle(title).toLowerCase();
+  if (cleaned.length === 0) return true;
+  if (PLACEHOLDER_TITLES.indexOf(cleaned) >= 0) return true;
+  if (cleaned.startsWith("hermes")) {
+    const rest = cleaned.slice(6).trim();
+    if (
+      rest.length === 0 ||
+      rest.charAt(0) === ":" ||
+      rest.charAt(0) === "-" ||
+      rest.startsWith("answer") ||
+      rest.startsWith("reply") ||
+      rest.startsWith("respons") ||
+      rest.startsWith("note") ||
+      rest.startsWith("agent") ||
+      rest.startsWith("summary")
+    ) {
+      return true;
+    }
+  }
+  if (cleaned.startsWith("ai ") || cleaned.startsWith("an ai ")) return true;
+  if (cleaned.endsWith(" by hermes") || cleaned.endsWith(" by ai") || cleaned.endsWith(" by an ai")) return true;
+  return false;
+}
+
+/** Shortens a title to something that still reads well as a file name. */
+export function truncateTitle(text: string, maxWords = 8, maxChars = 60): string {
+  const words = normalizeTitle(text).split(" ").filter((word) => word.length > 0);
+  const kept: string[] = [];
+  for (const word of words) {
+    if (kept.length >= maxWords) break;
+    if (kept.length > 0 && kept.join(" ").length + word.length + 1 > maxChars) break;
+    kept.push(word);
+  }
+  return kept.join(" ").trim();
+}
+
+/** Openers that mean the text is an instruction, not a subject. */
+const INSTRUCTION_OPENERS = [
+  "make",
+  "fix",
+  "rewrite",
+  "summarise",
+  "summarize",
+  "create",
+  "add",
+  "insert",
+  "append",
+  "change",
+  "update",
+  "remove",
+  "delete",
+  "please",
+  "can",
+  "could",
+  "explain",
+  "what",
+  "why",
+  "how",
+  "which",
+  "who",
+  "when",
+  "where",
+  "give",
+  "show",
+  "write",
+  "turn",
+  "split",
+  "shorten",
+  "expand",
+  "translate",
+  "answer",
+];
+
+/** A last-resort title taken from the request, when nothing better exists. */
+export function usableFallbackTitle(text: string): string {
+  const cleaned = normalizeTitle(text);
+  if (cleaned.length === 0 || isPlaceholderTitle(cleaned)) return "";
+  if (cleaned.endsWith("?")) return "";
+  const words = cleaned.split(" ").filter((word) => word.length > 0);
+  if (words.length > 9) return "";
+  if (INSTRUCTION_OPENERS.indexOf(words[0].toLowerCase()) >= 0) return "";
+  if (words[0].toLowerCase() === "the" && words.length > 1 && INSTRUCTION_OPENERS.indexOf(words[1].toLowerCase()) >= 0) {
+    return "";
+  }
+  return truncateTitle(cleaned, 8, 60);
+}
+
+/** Strips a blockquote marker, a callout type or a bullet from a line. */
+function stripBlockPrefix(line: string): string {
+  let text = (line || "").trim();
+  const markers = ">-+*|";
+  while (text.length > 0 && markers.indexOf(text.charAt(0)) >= 0) text = text.slice(1).trim();
+  // "> [!note] Boiler pressure is low" — the callout type is not the title.
+  while (text.startsWith("[!")) {
+    const closing = text.indexOf("]");
+    if (closing < 0) break;
+    text = text.slice(closing + 1).trim();
+  }
+  return text;
+}
+
+/** The title the note declares for itself: properties, or its H1. */
+export function declaredTitle(content: string): string {
   const split = splitFrontmatter(content);
   if (split.data) {
     for (const key of ["title", "name", "aliases", "alias"]) {
       const value = split.data[key];
-      if (typeof value === "string" && value.trim().length > 0) return value.trim();
-      if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string" && String(value[0]).trim()) {
-        return String(value[0]).trim();
+      let candidate = "";
+      if (typeof value === "string") candidate = value.trim();
+      else if (Array.isArray(value) && value.length > 0 && typeof value[0] === "string") {
+        candidate = String(value[0]).trim();
       }
+      if (candidate.length > 0 && !isPlaceholderTitle(candidate)) return truncateTitle(candidate, 12, 90);
     }
   }
   const heading = firstHeading(split.body);
-  if (heading) return heading;
-  const hint = (fallback || "")
-    .split("\n")[0]
-    .split(" ")
-    .slice(0, 9)
-    .join(" ")
-    .trim();
-  return hint || "Untitled note";
+  if (heading && !isPlaceholderTitle(heading)) return truncateTitle(heading, 12, 90);
+  return "";
+}
+
+/**
+ * A title derived from the note itself when it declares none: the first line of
+ * real text. Used only after the agent has been asked, and still never a
+ * placeholder.
+ */
+export function contentTitle(content: string): string {
+  const declared = declaredTitle(content);
+  if (declared) return declared;
+  const split = splitFrontmatter(content);
+  let inFence = false;
+  for (const line of split.body.split("\n")) {
+    if (line.trim().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const stripped = stripBlockPrefix(line);
+    if (stripped.length < 3) continue;
+    if (stripped.charAt(0) === "#") continue;
+    if (stripped.startsWith("---")) continue;
+    if (isPlaceholderTitle(stripped)) continue;
+    return truncateTitle(stripped, 8, 70);
+  }
+  return "";
+}
+
+export function titleFromNote(content: string, fallback: string): string {
+  const declared = declaredTitle(content);
+  if (declared) return declared;
+  const derived = contentTitle(content);
+  if (derived) return derived;
+  const hint = usableFallbackTitle(fallback);
+  if (hint) return hint;
+  return "Untitled note";
 }
 
 export function serializeNote(frontmatter: Record<string, unknown> | null, body: string): string {

@@ -218,6 +218,8 @@ Every generated note is checked before it is written: property/word/link counts,
 
 On a rewrite, existing frontmatter values are preserved and missing keys added — properties are never silently replaced.
 
+**A note is named after its content, never after the assistant.** The title (and therefore the file name) comes from what the note says: the `title` property or the H1 the agent wrote. If an answer arrives without either, the agent is asked to name it. `Hermes`, `AI`, `Assistant`, `Answer`, `Note` and `Untitled` are refused as titles and file names, and so is your own request text — *"make it shorter"* can never become a file name. Only when the agent cannot be reached does the plugin fall back to the first real line of the note, and the title is always visible in the confirmation before it is written.
+
 ## Mobile
 
 Hermes Agent Notes is `isDesktopOnly: false` and was written for mobile from the start:

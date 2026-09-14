@@ -11,7 +11,7 @@ import type { VaultConventions } from "./types";
 
 const FENCE = "```";
 
-export type NoteTask = "create" | "rewrite" | "fix" | "answer" | "chat";
+export type NoteTask = "create" | "rewrite" | "fix" | "answer" | "chat" | "title";
 
 export interface NoteContext {
   vaultName: string;
@@ -77,6 +77,7 @@ Code and math
 File names
 - A file name may not contain any of these characters: forward slash, backslash, colon, asterisk, question mark, double quote, less-than, greater-than, pipe, hash, caret, or square brackets.
 - No leading or trailing spaces or dots. Keep it under 100 characters. Do not use the word Untitled.
+- Never name a note after the assistant or with a generic word: no "Hermes", "AI", "Assistant", "Answer" or "Note" as a title or file name. Name it after its subject.
 - The file name should read as the title of the note so wikilinks to it stay readable.
 
 Content quality
@@ -209,6 +210,10 @@ export function systemPrompt(task: NoteTask, context: NoteContext): string {
     parts.push(
       "Your job: return the FULL improved note as a complete file. Keep every fact, link and file name that already exists unless the user asked to change it: this output replaces the file on disk. Improve structure, wording, tag and link correctness, and Obsidian syntax. Never drop content silently."
     );
+  } else if (task === "title") {
+    parts.push(
+      "Your job: name an existing note. Answer with the title only — one line, no quotes, no markdown, no trailing punctuation, at most 8 words. The title must describe what the note is actually about. Never title a note after the assistant or after a generic word: no \"Hermes\", \"AI\", \"Assistant\", \"Answer\", \"Note\" or \"Untitled\"."
+    );
   } else if (task === "fix") {
     parts.push(
       "Your job: repair Obsidian syntax only. Return the FULL note as a complete file. Fix broken wikilinks, illegal characters, malformed frontmatter, heading level jumps, incorrect tag syntax, curly quotes and stray code fences. Do not rewrite the prose, do not add or remove information, do not change the meaning or ordering of sentences."
@@ -297,6 +302,20 @@ export function mentionedBlock(context: NoteContext): string {
     lines.push("", "### " + note.path, "", note.content);
   }
   return lines.join("\n");
+}
+
+export function titleUserPrompt(content: string): string {
+  return [
+    "Answer with the title only.",
+    "",
+    "Give this note a short, descriptive title, as it should appear as an Obsidian file name.",
+    "One line, no quotes, no markdown, no trailing punctuation, at most 8 words.",
+    "It must describe the note's content and must never be \"Hermes\", \"AI\", \"Answer\", \"Note\" or anything similarly generic.",
+    "",
+    "Note:",
+    "",
+    content,
+  ].join("\n");
 }
 
 /** Trim a conversation to the last N messages, always keeping the system role out. */

@@ -861,6 +861,75 @@ test("describeForLog copes with anything thrown", () => {
   assert.equal(hermes.describeForLog(null), "null");
 });
 
+// --- note titles -----------------------------------------------------------
+
+test("a note is never titled after the assistant or with a stand-in", () => {
+  const rejected = [
+    "Hermes",
+    "hermes answer",
+    "# Hermes",
+    "Hermes:",
+    "Hermes reply",
+    "Hermes agent notes",
+    "AI note",
+    "Answer",
+    "Note",
+    "Untitled",
+    "new note",
+    "",
+    "   ",
+    "summary by hermes",
+  ];
+  for (const bad of rejected) {
+    assert.equal(hermes.isPlaceholderTitle(bad), true, "should be rejected: " + JSON.stringify(bad));
+  }
+  const allowed = ["Kitchen renovation", "Boiler service 2026", "Lead times in the workshop", "Hermeneutics", "Hermesstraat 12"];
+  for (const good of allowed) {
+    assert.equal(hermes.isPlaceholderTitle(good), false, "should be allowed: " + good);
+  }
+});
+
+test("a title the note declares is used, but never a placeholder one", () => {
+  assert.equal(hermes.declaredTitle("---\ntitle: Hermes answer\n---\n\n# Roof inspection\n\nbody"), "Roof inspection");
+  assert.equal(hermes.declaredTitle("---\ntitle: Hermes answer\n---\n\nbody only"), "");
+  assert.equal(hermes.declaredTitle("# Kitchen renovation\n\nbody"), "Kitchen renovation");
+  assert.equal(hermes.declaredTitle("---\ntitle: Untitled\n---\n\n# Hermes summary\n\nbody"), "");
+  assert.equal(hermes.declaredTitle("nothing to see"), "");
+});
+
+test("with no title of its own, the note is named after its content", () => {
+  assert.equal(hermes.contentTitle("Lead times are growing in the workshop."), "Lead times are growing in the workshop");
+  assert.equal(hermes.contentTitle("> [!note] Boiler pressure is low\n\nbody"), "Boiler pressure is low");
+  assert.equal(hermes.contentTitle("```\ncode only\n```"), "", "code is not a title");
+  assert.equal(hermes.contentTitle("Hermes answer\n\nreal text"), "real text");
+});
+
+test("titleFromNote refuses the request text as a title", () => {
+  const long = "one two three four five six seven eight nine ten eleven twelve";
+  assert.equal(hermes.titleFromNote("no heading here", long), "no heading here");
+  assert.equal(hermes.titleFromNote("body without title", "make it shorter"), "body without title");
+  assert.equal(hermes.titleFromNote("", "Kitchen renovation"), "Kitchen renovation");
+  assert.equal(hermes.titleFromNote("", "Hermes answer"), "Untitled note");
+  assert.equal(hermes.titleFromNote("", "make it shorter"), "Untitled note");
+  assert.equal(hermes.titleFromNote("", "What links should this note have?"), "Untitled note");
+  assert.equal(hermes.titleFromNote("", ""), "Untitled note");
+});
+
+test("normalizeTitle strips the wrappers a model adds", () => {
+  assert.equal(hermes.normalizeTitle("## **`Kitchen renovation`**"), "Kitchen renovation");
+  assert.equal(hermes.normalizeTitle('  "Boiler service:"  '), "Boiler service");
+  assert.equal(hermes.normalizeTitle("title: Roof inspection"), "Roof inspection");
+  assert.equal(hermes.normalizeTitle("Kitchen   renovation\nsecond line"), "Kitchen renovation");
+  assert.equal(hermes.normalizeTitle(""), "");
+});
+
+test("titleUserPrompt tells the agent what a title may not be", () => {
+  const prompt = hermes.titleUserPrompt("# Kitchen renovation\n\nbody");
+  assert.ok(prompt.indexOf("Answer with the title only") === 0, prompt);
+  assert.ok(prompt.indexOf("Hermes") >= 0, "the refusal list must mention the assistant name");
+  assert.ok(prompt.indexOf("# Kitchen renovation") >= 0, "the note must be included");
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

@@ -17,8 +17,22 @@ const DELTAS = ["# Kitchen renovation", "\n\nBody text with ", "[[Boiler service
 export async function startMockServer(options = {}) {
   const key = options.key === undefined ? "test-key" : options.key;
   const answer = options.answer || ANSWER;
+  const titleAnswer = options.titleAnswer || "Lead times in the workshop";
   const delayMs = options.delayMs || 0;
   const seen = [];
+
+  /**
+   * A title request is its own little turn ("Answer with the title only"), so the
+   * mock answers it differently — that is what makes the naming path testable.
+   */
+  function replyFor(payload) {
+    const messages = (payload && payload.messages) || [];
+    const users = messages.filter((message) => message.role === "user");
+    const last = users.length > 0 ? users[users.length - 1] : null;
+    const text = last && typeof last.content === "string" ? last.content : "";
+    if (text.indexOf("Answer with the title only") >= 0) return titleAnswer;
+    return answer;
+  }
 
   function handle(route, authorized, body, sendJson, response) {
     if (route === "/health") return sendJson(200, { status: "ok" });
@@ -36,9 +50,11 @@ export async function startMockServer(options = {}) {
     if (route === "/v1/chat/completions") {
       if (!authorized) return sendJson(401, { error: "unauthorized" });
       const payload = JSON.parse(body || "{}");
+      const reply = replyFor(payload);
       if (payload.stream) {
         response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
-        for (const piece of DELTAS) {
+        const pieces = reply === ANSWER ? DELTAS : [reply];
+        for (const piece of pieces) {
           response.write("data: " + JSON.stringify({ model: "hermes-agent", choices: [{ delta: { content: piece } }] }) + "\n\n");
         }
         response.write("data: " + JSON.stringify({ usage: { total_tokens: 12 } }) + "\n\n");
@@ -50,7 +66,7 @@ export async function startMockServer(options = {}) {
         id: "chatcmpl-test",
         object: "chat.completion",
         model: payload.model,
-        choices: [{ index: 0, message: { role: "assistant", content: answer }, finish_reason: "stop" }],
+        choices: [{ index: 0, message: { role: "assistant", content: reply }, finish_reason: "stop" }],
         usage: { prompt_tokens: 4, completion_tokens: 8, total_tokens: 12 },
       });
     }

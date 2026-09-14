@@ -177,19 +177,25 @@ await test("an answer saved as a note drops the assistant's caveat", async () =>
   const plugin = await makePlugin({ stripCaveats: true, defaultFolder: "" });
   const answer = "The tiles arrive on Friday.\n\nLet me know if you want me to expand this.";
   await plugin.saveTextAsNote(answer, "Tiles");
-  const saved = app.vault.getMarkdownFiles().filter((file) => file.basename === "Tiles");
-  assert.equal(saved.length, 1, "the note was not created");
-  const content = await app.vault.read(saved[0]);
+  const saved = app.vault
+    .getMarkdownFiles()
+    .filter((file) => file.basename.startsWith("Lead times in the workshop"));
+  assert.ok(saved.length >= 1, "the note was not created");
+  const file = saved[saved.length - 1];
+  const content = await app.vault.read(file);
   assert.ok(content.indexOf("tiles arrive on Friday") >= 0, content);
   assert.ok(content.indexOf("Let me know") < 0, "the caveat was written into the note: " + content);
+  assert.ok(file.basename !== "Tiles", "a title-less answer must be named by the agent, not by the hint");
 });
 
 await test("with caveat stripping off, the answer is saved verbatim", async () => {
   const plugin = await makePlugin({ stripCaveats: false, defaultFolder: "" });
   await plugin.saveTextAsNote("Body text.\n\nLet me know if you want more.", "Verbatim");
-  const saved = app.vault.getMarkdownFiles().filter((file) => file.basename === "Verbatim");
-  assert.equal(saved.length, 1);
-  const content = await app.vault.read(saved[0]);
+  const saved = app.vault
+    .getMarkdownFiles()
+    .filter((file) => file.basename.startsWith("Lead times in the workshop"));
+  assert.ok(saved.length >= 1);
+  const content = await app.vault.read(saved[saved.length - 1]);
   assert.ok(content.indexOf("Let me know") >= 0, "stripping is off, the text must be untouched");
 });
 
@@ -288,6 +294,56 @@ await test("a successful connection writes nothing to the error log", async () =
   assert.equal((await plugin.testConnection()).ok, true, "the mock server should be reachable");
   await plugin.testConnectionWithNotice();
   assert.deepEqual(await plugin.recentErrors(5), [], "a healthy connection must stay quiet");
+});
+
+await test("a title-less answer is named by the agent, never by the plugin", async () => {
+  const titleless = await startMockServer({
+    key: "test-key",
+    answer: "Body text with [[Boiler service]].",
+    titleAnswer: "Boiler service follow-up",
+  });
+  try {
+    const plugin = await makePlugin({ baseUrl: titleless.baseUrl, defaultFolder: "" });
+    // A request-shaped hint must never become the file name.
+    await plugin.saveTextAsNote("Body text with [[Boiler service]].", "make it shorter");
+
+    const askedForTitle = titleless.seen.some((entry) => entry.body.indexOf("Answer with the title only") >= 0);
+    assert.ok(askedForTitle, "the agent was never asked to name the note");
+
+    const files = app.vault.getMarkdownFiles().map((file) => file.path);
+    assert.ok(
+      files.some((path) => path.indexOf("Boiler service follow-up") >= 0),
+      "the agent's title should name the file: " + JSON.stringify(files)
+    );
+    const bogus = files.filter((path) => /hermes|untitled|make it shorter|Body text/i.test(path));
+    assert.equal(bogus.length, 0, "a placeholder or the request text became a file name: " + JSON.stringify(bogus));
+  } finally {
+    titleless.close();
+  }
+});
+
+await test("a placeholder title from the agent is refused and the content is used", async () => {
+  const cheeky = await startMockServer({
+    key: "test-key",
+    answer: "Body text.",
+    titleAnswer: "Hermes answer",
+  });
+  try {
+    const plugin = await makePlugin({ baseUrl: cheeky.baseUrl, defaultFolder: "" });
+    await plugin.saveTextAsNote("Leaking tap in the workshop kitchen.\n\nMore detail follows.", "whatever");
+    const files = app.vault.getMarkdownFiles().map((file) => file.path);
+    assert.ok(
+      files.some((path) => path.indexOf("Leaking tap in the workshop kitchen") >= 0),
+      "the content should name the note instead: " + JSON.stringify(files)
+    );
+    assert.equal(
+      files.filter((path) => /hermes/i.test(path)).length,
+      0,
+      "no file may be named after the assistant: " + JSON.stringify(files)
+    );
+  } finally {
+    cheeky.close();
+  }
 });
 
 server.close();
