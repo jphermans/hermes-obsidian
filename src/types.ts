@@ -11,7 +11,7 @@ import { defaultQuickPrompts } from "./quick-prompts";
 export type FilenameStyle = "keep" | "title" | "kebab" | "snake";
 
 /** How Obsidian reaches the Hermes API server. */
-export type AccessMode = "local" | "lan" | "tailscale" | "cloudflare" | "ngrok" | "custom";
+export type AccessMode = "local" | "lan" | "tailscale" | "wireguard" | "cloudflare" | "ngrok" | "custom";
 
 export interface FrontmatterKeyInfo {
   key: string;

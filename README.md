@@ -71,7 +71,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 >
 > It is the long-form version of the sections below, with a copy button on every command and a verify checklist that walks outward from the server. The same guide is in the plugin: **Settings → Hermes Agent Notes → Setup guide**.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.24** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.25** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -173,6 +173,70 @@ CF-Access-Client-Secret: yyyy
 A header named `Authorization` replaces the API key. The plugin warns you in-app when the configured URL is plain HTTP while you are on a mobile device, and it names HTTPS as the fix instead of failing silently.
 
 **Two gotchas on these routes.** Cloudflare Tunnel quick tunnels get a new random URL on every restart — use a named tunnel for anything permanent, and put Cloudflare Access (service token) in front of it. ngrok's free tier shows an interstitial page to browsers, which the suggested `ngrok-skip-browser-warning: true` header skips; do **not** use `ngrok --basic-auth`, because its `Authorization` header would replace your Hermes API key.
+
+### WireGuard — your own VPN, no third party
+
+Tailscale *is* WireGuard with the coordination, key exchange and certificates handled for you. If you would rather run the tunnel yourself — no account, no vendor in the path — install WireGuard on the Hermes host and connect your devices to it. Only **one UDP port** needs to be open, and the API server then answers on its private VPN address. Full walkthrough with every platform: <https://jphermans.github.io/hermes-obsidian/#wireguard>.
+
+**Install WireGuard — every system:**
+
+| System | Install |
+|---|---|
+| **Debian · Ubuntu · Mint** (host) | `sudo apt install wireguard` |
+| **RHEL · CentOS · Fedora** (host) | `sudo dnf install wireguard-tools` |
+| **Arch · Manjaro** (host) | `sudo pacman -S wireguard-tools` |
+| **Alpine** (host) | `sudo apk add wireguard-tools` |
+| **macOS** (host) | WireGuard from the App Store, or `brew install wireguard-tools` for a headless Mac |
+| **Windows** (host) | installer from [wireguard.com/install](https://www.wireguard.com/install/) |
+| **Clients** | App Store (iOS/iPadOS/macOS), Play Store or F-Droid (Android), wireguard.com/install (Windows/Linux/BSD) — one key pair each |
+
+```bash
+# on the Hermes host — one key pair for the server
+wg genkey | sudo tee /etc/wireguard/server.key | wg pubkey | sudo tee /etc/wireguard/server.pub
+```
+
+```ini
+# /etc/wireguard/wg0.conf — the host
+[Interface]
+Address = 10.8.0.1/24
+ListenPort = 51820
+PrivateKey = <contents of server.key>
+
+[Peer]                              # one block per device
+PublicKey = <that device's public key>
+AllowedIPs = 10.8.0.2/32            # just this device — keep it tight
+```
+
+```ini
+# the device's own config — import it in the app
+[Interface]
+Address = 10.8.0.2/32
+PrivateKey = <this device's private key>
+
+[Peer]
+PublicKey = <contents of server.pub>
+Endpoint = your-host.example.com:51820   # the host's public address
+AllowedIPs = 10.8.0.0/24            # the VPN subnet only, not 0.0.0.0/0
+PersistentKeepalive = 25            # keeps the NAT hole open
+```
+
+```bash
+# on the host: bring it up and keep it up
+sudo wg-quick up wg0
+sudo systemctl enable wg-quick@wg0
+sudo ufw allow 51820/udp                  # the only port to open
+
+# the API server must listen on the VPN address, or the tunnel cannot reach it
+#   ~/.hermes/.env:  API_SERVER_HOST=10.8.0.1
+hermes gateway stop && hermes gateway
+
+curl -s http://10.8.0.1:8642/health       # from a connected device
+```
+
+- **API server URL:** `http://10.8.0.1:8642` (the host's VPN address) · **extra headers:** none.
+- **A phone still needs HTTPS.** The VPN removes the exposure, not the OS rule: iOS and Android refuse plain HTTP to a non-loopback address even over a VPN. Desktop works immediately; for phones put TLS on top (Caddy with a DNS-01 certificate) or use [Tailscale](#reachable-from-anywhere), which does exactly that. That is the whole difference between the two.
+- **CGNAT blocks it.** Without a reachable public address from your ISP (common on mobile and some fibre plans) an inbound WireGuard endpoint cannot work — that is the case for Tailscale or Cloudflare Tunnel instead of a port forward.
+- **What you are trusting:** there are no accounts and no reset — the private key *is* the identity, so keep those files off shared machines. The tunnel reaches the whole host, so keep `AllowedIPs` narrow, open only UDP 51820, and firewall the VPN interface to port 8642 if a device should reach nothing else.
 
 ### A permanent URL: Cloudflare Tunnel (named)
 
@@ -533,6 +597,7 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **The URL changes every time I restart the tunnel** | That is a quick tunnel. A *named* Cloudflare tunnel (`cloudflared tunnel create` + `tunnel route dns` + the service step for your OS) and an ngrok **static domain** both keep one URL, and both run as services — see [A permanent URL](#a-permanent-url-cloudflare-tunnel-named). |
 | **cloudflared is not on my PATH** | On Windows, reopen the terminal after `winget install`, or call `C:\Cloudflared\bin\cloudflared.exe` by full path. On Linux, the service runs as root — `sudo cloudflared --config /home/<user>/.cloudflared/config.yml service install` if the config lives in your home. |
 | **The tunnel is up but the plugin still fails** | Check the layers in this order: `hermes gateway status` (the API server itself), the tunnel service (`cloudflared tunnel info hermes`, or `ngrok` service status), then the host — a sleeping machine drops the tunnel. `curl https://your-host/health` from a phone on mobile data tells you which layer is down. |
+| **Over WireGuard, can a phone connect?** | Not with plain HTTP — iOS and Android refuse cleartext to a non-loopback address even over a VPN, so the phone needs TLS in front (Caddy with a DNS-01 certificate) or Tailscale, which is WireGuard with certificates included. Desktop works with `http://10.8.0.1:8642` directly. Also check that `API_SERVER_HOST` is set to the VPN address, not `127.0.0.1`, or nothing on the tunnel can reach the API server. |
 | **On a phone, `127.0.0.1` / `localhost` will not save** | Deliberate: on a phone that address points at the phone itself, so nothing could reach Hermes. Use your Tailscale/Cloudflare/ngrok URL. If Hermes really does run on that device (Termux on Android), press *Save anyway* under the field. |
 | **HTTP 403 behind Cloudflare Access** | Add the `CF-Access-Client-Id` / `CF-Access-Client-Secret` service token headers under *Extra request headers*. |
 | **No tokens appear / the answer arrives all in one piece** | Streaming is off by default, or Hermes is not allowing this app's origin, or something between you and it is buffering. Press **Verify streaming** in the settings — it reports which of the four causes it is, and the reason is also written to the error log. |

@@ -425,7 +425,7 @@ await testAsync("writeNote creates, refuses duplicates, overwrites and appends",
 test("every access route is complete and unique", () => {
   const ids = hermes.REMOTE_PRESETS.map((preset) => preset.id);
   assert.equal(new Set(ids).size, ids.length, "duplicate preset id");
-  for (const id of ["local", "lan", "tailscale", "cloudflare", "ngrok", "custom"]) {
+  for (const id of ["local", "lan", "tailscale", "wireguard", "cloudflare", "ngrok", "custom"]) {
     assert.ok(ids.includes(id), "missing preset: " + id);
   }
   for (const preset of hermes.REMOTE_PRESETS) {
@@ -459,6 +459,23 @@ test("cloudflare carries Access headers and ngrok the interstitial skip", () => 
   const allHeaders = ngrok.requiredHeaders.concat(ngrok.optionalHeaders).join("\n").toLowerCase();
   assert.ok(!allHeaders.includes("authorization"), "ngrok preset must not set Authorization");
   assert.ok(ngrok.notes.join(" ").toLowerCase().includes("basic-auth"), "ngrok note must warn about --basic-auth");
+});
+
+test("the WireGuard preset is honest about phones and the ports it needs", () => {
+  const wireguard = hermes.presetFor("wireguard");
+  assert.equal(wireguard.mobileSafe, false, "plain HTTP over the VPN is still refused by a phone");
+  assert.ok(wireguard.urlTemplate.startsWith("http://"), "the VPN address is plain HTTP");
+  const commands = wireguard.commands.join("\n");
+  assert.ok(commands.includes("API_SERVER_HOST"), "must say to listen on the VPN address, not only loopback");
+  assert.ok(commands.includes("51820/udp"), "must name the single port to open");
+  assert.ok(commands.includes("wg-quick up"), "must bring the interface up");
+  assert.ok(commands.includes("enable wg-quick@wg0"), "must make it survive a reboot");
+  assert.ok(
+    wireguard.notes.join(" ").toLowerCase().includes("https"),
+    "a phone needs HTTPS on top, and the note has to say so"
+  );
+  assert.ok(wireguard.notes.join(" ").includes("PersistentKeepalive"), "must mention the NAT keepalive");
+  assert.equal(wireguard.requiredHeaders.length, 0, "no headers to add for a VPN");
 });
 
 test("presetFor falls back to local for an unknown mode", () => {

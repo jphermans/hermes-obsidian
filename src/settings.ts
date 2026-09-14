@@ -876,6 +876,9 @@ export class HermesSettingTab extends PluginSettingTab {
     );
     const permanent = steps.createEl("ul", { cls: "hermes-guide-list" });
     permanent.createEl("li", {
+      text: "WireGuard (no third party at all): install wireguard on the host — apt install wireguard, dnf install wireguard-tools, pacman -S wireguard-tools, or the WireGuard app on macOS/Windows — generate a key pair with wg genkey | wg pubkey, put the server's own key and one [Peer] block per device in /etc/wireguard/wg0.conf, then wg-quick up wg0 and systemctl enable wg-quick@wg0. Open UDP 51820 only, and set API_SERVER_HOST to the VPN address (10.8.0.1) in ~/.hermes/.env so the API server is reachable over the tunnel. Desktop works with http://10.8.0.1:8642; a phone still needs HTTPS in front, and CGNAT blocks an inbound endpoint entirely.",
+    });
+    permanent.createEl("li", {
       text: "cloudflared installs on every system: brew on macOS, winget install --id Cloudflare.cloudflared -e on Windows (or the .msi), apt/yum/pacman from Cloudflare's repository on Linux, and a Docker image. Running it as a service differs per system too — launchd on macOS, systemd on Linux, and a Windows service whose config must live in the SYSTEM account's profile. The web guide has the exact commands for each.",
     });
     permanent.createEl("li", {

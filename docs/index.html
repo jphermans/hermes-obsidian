@@ -167,7 +167,7 @@
 <body>
 <header class="top">
   <div class="top-inner">
-    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.24</span> <small>complete setup guide</small></span>
+    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.25</span> <small>complete setup guide</small></span>
     <span class="top-actions">
       <a class="ghost" style="padding:7px 11px;border:1px solid var(--border);border-radius:8px" href="https://github.com/jphermans/hermes-obsidian">Repository</a>
       <button class="ghost" id="theme">Theme</button>
@@ -185,6 +185,7 @@
     <a href="#same">2 · Same machine</a>
     <a href="#lan">3 · LAN (one network)</a>
     <a href="#tailscale">4 · Tailscale</a>
+    <a href="#wireguard">4b · WireGuard VPN</a>
     <a href="#cloudflare">5 · Cloudflare Tunnel</a>
     <a href="#ngrok">6 · ngrok</a>
     <a href="#proxy">7 · VPS / TLS proxy</a>
@@ -429,6 +430,7 @@
         <tr><td>Same computer</td><td>Same computer</td><td><a href="#same">Loopback</a></td><td><span class="pill bad">no</span></td><td><code>http://127.0.0.1:8642</code></td></tr>
         <tr><td>A machine at home</td><td>Another device on the same Wi-Fi/LAN</td><td><a href="#lan">LAN over HTTP</a></td><td><span class="pill bad">no</span></td><td><code>http://192.168.1.50:8642</code></td></tr>
         <tr><td>A machine you own</td><td>Phone, tablet, laptop, anywhere</td><td><a href="#tailscale">Tailscale</a> <span class="pill good">easiest</span></td><td><span class="pill good">yes</span></td><td><code>https://host.tailnet.ts.net</code></td></tr>
+        <tr><td>A machine you own</td><td>Your own devices, no third party involved</td><td><a href="#wireguard">WireGuard</a> <span class="pill accent">self-hosted</span></td><td><span class="pill warn">desktop as-is; phones with TLS</span></td><td><code>http://10.8.0.1:8642</code></td></tr>
         <tr><td>A machine you own</td><td>Anywhere, plus a public hostname you control</td><td><a href="#cloudflare">Cloudflare Tunnel</a> + Access</td><td><span class="pill good">yes</span></td><td><code>https://hermes.example.com</code></td></tr>
         <tr><td>A machine you own</td><td>Anywhere, quickest to stand up</td><td><a href="#ngrok">ngrok</a> static domain</td><td><span class="pill good">yes</span></td><td><code>https://name.ngrok.app</code></td></tr>
         <tr><td>A VPS / server with a domain</td><td>Anywhere</td><td><a href="#proxy">TLS reverse proxy</a></td><td><span class="pill good">yes</span></td><td><code>https://hermes.example.com</code></td></tr>
@@ -440,13 +442,10 @@
 
     <figure>
       <div class="figure-frame">
-        <svg viewBox="0 0 900 366" role="img" aria-label="Coverage matrix comparing six routes across five requirements: desktop, phone, any network, no domain needed, and not publicly exposed.">
+                <svg viewBox="0 0 900 408" role="img" aria-label="Coverage matrix comparing seven routes across six requirements: desktop, phone, any network, no domain needed, not publicly exposed, and able to run as a service.">
           <text x="14" y="20" font-size="11.5" font-weight="620" fill="var(--faint)">ROUTE COVERAGE</text>
-
-          <!-- header -->
           <text x="196" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">desktop</text>
-          <text x="288" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">phone /</text>
-          <text x="288" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">tablet</text>
+          <text x="288" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">phone</text>
           <text x="392" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">any</text>
           <text x="392" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">network</text>
           <text x="500" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">no domain</text>
@@ -455,10 +454,7 @@
           <text x="610" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">by default</text>
           <text x="740" y="42" font-size="10.8" fill="var(--faint)" text-anchor="middle">always-on</text>
           <text x="740" y="54" font-size="10.8" fill="var(--faint)" text-anchor="middle">service</text>
-
           <line x1="14" y1="64" x2="886" y2="64" stroke="var(--border)"></line>
-
-          <!-- rows -->
           <text x="14" y="90" font-size="12" fill="var(--text)">§2 Loopback</text>
           <text x="196" y="90" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="288" y="90" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
@@ -467,16 +463,14 @@
           <text x="610" y="90" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="740" y="90" font-size="11.5" fill="var(--faint)" text-anchor="middle">—</text>
           <line x1="14" y1="102" x2="886" y2="102" stroke="var(--border)"></line>
-
           <text x="14" y="128" font-size="12" fill="var(--text)">§3 LAN over HTTP</text>
           <text x="196" y="128" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="288" y="128" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
-          <text x="392" y="128" font-size="13" fill="var(--warn)" text-anchor="middle">~</text>
+          <text x="392" y="128" font-size="11.6" fill="var(--warn)" text-anchor="middle">warn~</text>
           <text x="500" y="128" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="610" y="128" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
           <text x="740" y="128" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <line x1="14" y1="140" x2="886" y2="140" stroke="var(--border)"></line>
-
           <text x="14" y="166" font-size="12" fill="var(--text)">§4 Tailscale</text>
           <text x="196" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="288" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
@@ -485,46 +479,50 @@
           <text x="610" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="740" y="166" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <line x1="14" y1="178" x2="886" y2="178" stroke="var(--border)"></line>
-
-          <text x="14" y="204" font-size="12" fill="var(--text)">§5 Cloudflare Tunnel</text>
+          <text x="14" y="204" font-size="12" fill="var(--text)" font-weight="600">§4b WireGuard</text>
           <text x="196" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
-          <text x="288" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="288" y="204" font-size="11.6" fill="var(--warn)" text-anchor="middle">TLS</text>
           <text x="392" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
-          <text x="500" y="204" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
-          <text x="610" y="204" font-size="12" fill="var(--ok)" text-anchor="middle">Access</text>
+          <text x="500" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="610" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="740" y="204" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <line x1="14" y1="216" x2="886" y2="216" stroke="var(--border)"></line>
-
-          <text x="14" y="242" font-size="12" fill="var(--text)">§6 ngrok static domain</text>
+          <text x="14" y="242" font-size="12" fill="var(--text)">§5 Cloudflare Tunnel</text>
           <text x="196" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="288" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="392" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
-          <text x="500" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
-          <text x="610" y="242" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="500" y="242" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="610" y="242" font-size="11.6" fill="var(--warn)" text-anchor="middle">Access</text>
           <text x="740" y="242" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <line x1="14" y1="254" x2="886" y2="254" stroke="var(--border)"></line>
-
-          <text x="14" y="280" font-size="12" fill="var(--text)">§7 Caddy / nginx proxy</text>
+          <text x="14" y="280" font-size="12" fill="var(--text)">§6 ngrok static domain</text>
           <text x="196" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="288" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <text x="392" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
-          <text x="500" y="280" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
-          <text x="610" y="280" font-size="12" fill="var(--warn)" text-anchor="middle">yours to add</text>
+          <text x="500" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="610" y="280" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
           <text x="740" y="280" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
           <line x1="14" y1="292" x2="886" y2="292" stroke="var(--border)"></line>
-
-          <text x="14" y="318" font-size="12" fill="var(--text)">§9 Hermes on the phone</text>
-          <text x="196" y="318" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
-          <text x="288" y="318" font-size="12" fill="var(--warn)" text-anchor="middle">that one</text>
-          <text x="392" y="318" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
-          <text x="500" y="318" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
-          <text x="610" y="318" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
-          <text x="740" y="318" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
-
-          <text x="14" y="350" font-size="10.8" fill="var(--faint)">✓ works · ✗ blocked by the OS or by configuration · ~ works only on the same network · “any network” means the device can be on mobile data.</text>
+          <text x="14" y="318" font-size="12" fill="var(--text)">§7 Caddy / nginx proxy</text>
+          <text x="196" y="318" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="288" y="318" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="392" y="318" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="500" y="318" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="610" y="318" font-size="11.6" fill="var(--warn)" text-anchor="middle">yours to add</text>
+          <text x="740" y="318" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <line x1="14" y1="330" x2="886" y2="330" stroke="var(--border)"></line>
+          <text x="14" y="356" font-size="12" fill="var(--text)">§9 Hermes on the phone</text>
+          <text x="196" y="356" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="288" y="356" font-size="11.6" fill="var(--warn)" text-anchor="middle">that one</text>
+          <text x="392" y="356" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="500" y="356" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="610" y="356" font-size="13" fill="var(--ok)" text-anchor="middle">✓</text>
+          <text x="740" y="356" font-size="13" fill="var(--err)" text-anchor="middle">✗</text>
+          <text x="14" y="378" font-size="10.8" fill="var(--faint)">✓ works · ✗ blocked by the OS or by configuration · “any network” means mobile data works · “always-on service” survives a reboot.</text>
+          <text x="14" y="394" font-size="10.8" fill="var(--faint)">“TLS” needs a certificate in front — a phone refuses cleartext even over a VPN, the one thing WireGuard alone does not give you.</text>
         </svg>
       </div>
-      <figcaption><b>Figure 3 — the coverage matrix.</b> Requirements, not preferences: the ✗ marks are the operating system refusing cleartext, or a provider needing a domain you may not own. Read the column you cannot compromise on, then take the first row that satisfies it.</figcaption>
+      <figcaption><b>Figure 3 — the coverage matrix.</b> Requirements, not preferences: the ✗ marks are the operating system refusing cleartext, or a provider needing a domain you may not own. Read the column you cannot compromise on, then take the first row that satisfies it. WireGuard is the one row where the phone needs something added — a certificate in front — because the VPN does not change what iOS and Android allow.</figcaption>
     </figure>
 
     <h2 id="host">1 · Enable the API server on the Hermes host</h2>
@@ -573,6 +571,78 @@ tailscale serve status</code></pre>
       <div class="field"><b>API key</b><br>the value from <code>.env</code></div>
     </div>
     <div class="card ok"><p style="margin:0">The API server itself stays on <code>127.0.0.1</code>: only your tailnet can reach it, and the plugin works identically on desktop, iPhone, iPad and Android.</p></div>
+
+    <h2 id="wireguard">4b · WireGuard — your own VPN, no third party</h2>
+    <p>Tailscale <i>is</i> WireGuard with the coordination, key exchange and certificates handled for you. If you would rather run the tunnel yourself — no account, no vendor in the path, nothing to sign up for — install WireGuard on the Hermes host and connect your devices to it. Only <b>one UDP port</b> needs to be open, and the API server answers on its private VPN address.</p>
+
+    <h3>Install — every system</h3>
+    <table>
+      <thead><tr><th>System</th><th>Install</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><b>Debian · Ubuntu · Mint</b> (host)</td><td><code>sudo apt install wireguard</code></td><td>The kernel module ships with modern kernels; the package adds <code>wg</code> and <code>wg-quick</code>.</td></tr>
+        <tr><td><b>RHEL · CentOS · Fedora</b> (host)</td><td><code>sudo dnf install wireguard-tools</code></td><td>On very old kernels you also need the DKMS module.</td></tr>
+        <tr><td><b>Arch · Manjaro</b> (host)</td><td><code>sudo pacman -S wireguard-tools</code></td><td></td></tr>
+        <tr><td><b>Alpine</b> (host)</td><td><code>sudo apk add wireguard-tools</code></td><td>Common on routers and tiny VPS images.</td></tr>
+        <tr><td><b>macOS</b> (host)</td><td>WireGuard from the App Store, or <code>brew install wireguard-tools</code></td><td>The app is the easier path on a desktop; <code>wg-quick</code> is for a headless Mac.</td></tr>
+        <tr><td><b>Windows</b> (host)</td><td>Installer from <a href="https://www.wireguard.com/install/">wireguard.com/install</a></td><td>Import the config in the app; it also installs a service so the tunnel survives a reboot.</td></tr>
+        <tr><td><b>Clients — phone, tablet, laptop</b></td><td>Official apps: App Store (iOS/iPadOS/macOS), Play Store or F-Droid (Android), wireguard.com/install (Windows/Linux/BSD)</td><td>Each device needs its own key pair — never copy one device's private key to another.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Keys, then two config files</h3>
+    <pre><code># on the Hermes host — one key pair for the server
+wg genkey | sudo tee /etc/wireguard/server.key | wg pubkey | sudo tee /etc/wireguard/server.pub
+
+# and one per device, generated wherever is convenient (or by the app itself)
+wg genkey | tee phone.key | wg pubkey &gt; phone.pub</code></pre>
+    <pre><code># /etc/wireguard/wg0.conf — the host
+[Interface]
+Address = 10.8.0.1/24
+ListenPort = 51820
+PrivateKey = &lt;contents of server.key&gt;
+
+[Peer]                              # one block per device
+PublicKey = &lt;contents of phone.pub&gt;
+AllowedIPs = 10.8.0.2/32            # just this device — keep it tight</code></pre>
+    <pre><code># the device's own config (import it in the app, or ~/wg0.conf + wg-quick up wg0)
+[Interface]
+Address = 10.8.0.2/32
+PrivateKey = &lt;contents of phone.key&gt;
+DNS = 1.1.1.1                       # optional; omit to keep the device's own DNS
+
+[Peer]
+PublicKey = &lt;contents of server.pub&gt;
+Endpoint = your-host.example.com:51820   # public address of the host
+AllowedIPs = 10.8.0.0/24            # only the VPN subnet, not 0.0.0.0/0
+PersistentKeepalive = 25            # keeps the NAT hole open</code></pre>
+
+    <h3>Bring it up, then point the API server at it</h3>
+    <pre><code># on the host
+sudo wg-quick up wg0
+sudo systemctl enable wg-quick@wg0        # survive a reboot
+sudo ufw allow 51820/udp                  # or your firewall's equivalent — this is the only port
+wg show                                   # peers, handshakes, transfer
+
+# the API server must listen on the VPN address, not only loopback,
+# or the tunnel cannot reach it. ~/.hermes/.env:
+#   API_SERVER_HOST=10.8.0.1
+hermes gateway stop &amp;&amp; hermes gateway
+
+# from a connected device
+curl -s http://10.8.0.1:8642/health</code></pre>
+    <div class="grid">
+      <div class="field"><b>API server URL</b><br><code>http://10.8.0.1:8642</code> — the host's VPN address</div>
+      <div class="field"><b>Extra headers</b><br>none — there is no proxy in the path</div>
+    </div>
+
+    <div class="card warn">
+      <p style="margin:0 0 8px"><b>A phone still needs HTTPS.</b> The VPN removes the exposure, not the operating system's rule: iOS and Android refuse plain HTTP to a non-loopback address even over a VPN. So this route gives you desktop immediately, and for phones either put TLS on top (Caddy on the host with a DNS-01 certificate — no ports opened) or use <a href="#tailscale">Tailscale</a>, which does exactly that for you. That is the whole difference between the two: same protocol, one has the certificates done.</p>
+      <p style="margin:0"><b>CGNAT blocks it.</b> If your ISP does not give you a reachable public address (common on mobile and some fibre plans), an inbound WireGuard endpoint will never work — that is the case where Tailscale or Cloudflare Tunnel is the answer instead of a port forward.</p>
+    </div>
+
+    <div class="card bad">
+      <p style="margin:0"><b>What you are trusting.</b> WireGuard has no accounts and no reset: the private key <i>is</i> the identity, so treat those files like passwords and keep them off shared machines. The tunnel reaches the <b>whole host</b>, not just the API server, so keep <code>AllowedIPs</code> narrow, open only UDP 51820, and if you want a device to reach nothing else, firewall the VPN interface on the host to port 8642 alone.</p>
+    </div>
 
     <h2 id="cloudflare">5 · Cloudflare Tunnel (named) + Access</h2>
     <p>Gives you a permanent public HTTPS hostname without opening a port. Needs a domain on Cloudflare (the free plan is enough).</p>
