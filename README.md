@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="banner.png" alt="Hermes Agent Notes — write and fix Obsidian notes with your own Hermes Agent, local or remote" width="960">
+</p>
+
 # Hermes Agent Notes
 
 **Write and repair Obsidian notes with your own [Hermes Agent](https://github.com/NousResearch/hermes-agent) instance — local or remote — following your vault's Obsidian conventions.**
@@ -23,6 +27,7 @@ Hermes runs on your machine or on a server you own. The plugin talks to its Open
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [Releasing (BRAT)](#releasing-brat)
+- [Author](#author)
 
 ---
 
@@ -230,6 +235,7 @@ npm test         # unit tests + API/SSE tests against a mock Hermes server
 * `scripts/plugin-test.mjs` — boots the real plugin (`onload`) against that mock server and drives `testConnection`, the setup page's quick prompt (buffered and streamed), the auth-failure path and the vault scan end to end.
 * `scripts/vault-dryrun.mjs <vaultPath> [sample]` — runs the convention engine over a real vault and prints exactly what Hermes would be told.
 * `scripts/setup-labels.sh [owner/repo]` — applies this repo's label taxonomy (idempotent, updates in place, deletes nothing).
+* `gen_banner.py` — regenerates `banner.png` (1280×640, needs Pillow). It is the source of the header image; edit the script, not the PNG.
 
 Layout: `src/main.ts` (plugin, commands), `src/settings.ts` (setup page), `src/hermes-client.ts` (API client, transports), `src/vault-rules.ts` (vault scan), `src/prompts.ts` (Obsidian rules + context), `src/note-writer.ts` (names, frontmatter, writes), `src/validate.ts` (syntax checks), `src/ui/*` (modals and chat panel).
 
@@ -249,6 +255,19 @@ gh release create v0.1.1 --title "v0.1.1 — <summary>" --notes "<release notes>
 ```
 
 Pushing a tag also triggers `.github/workflows/release.yml`, which rebuilds and attaches the assets automatically. `main.js` is committed on purpose — Obsidian loads it directly.
+
+## Author
+
+<table>
+  <tr><td><b>Author</b></td><td>Jean-Pierre Hermans — <a href="https://github.com/jphermans">JPHsystems</a>, Belgium</td></tr>
+  <tr><td><b>GitHub</b></td><td><a href="https://github.com/jphermans">@jphermans</a></td></tr>
+  <tr><td><b>Repository</b></td><td><a href="https://github.com/jphermans/hermes-obsidian">jphermans/hermes-obsidian</a></td></tr>
+  <tr><td><b>Other plugin</b></td><td><a href="https://github.com/jphermans/obsidian-quick-calculator">obsidian-quick-calculator</a></td></tr>
+  <tr><td><b>Built against</b></td><td><a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> by Nous Research — the API server surface (<code>/v1/chat/completions</code>, <code>/health</code>, <code>/v1/models</code>)</td></tr>
+  <tr><td><b>Licence</b></td><td>MIT — see <a href="LICENSE">LICENSE</a></td></tr>
+</table>
+
+Bug reports and feature ideas are welcome in [Issues](https://github.com/jphermans/hermes-obsidian/issues) — include your Obsidian version, your Hermes version, and whether the instance is local or remote (and over which route), since those decide most diagnoses.
 
 ## Licence
 
