@@ -145,6 +145,8 @@ hermes.example.com {
 
 Keep the API server bound to `127.0.0.1` and let the tunnel or proxy be the only way in. The plugin treats an `https://…` URL exactly like a local one — same transport, same streaming behaviour, no extra configuration.
 
+**The port is optional.** Omit it when the tunnel or proxy terminates HTTPS on 443: `https://hermes.example.com` is a valid API server URL and the plugin requests `https://hermes.example.com/v1/…`. A port is only needed when nothing sits on the default 80/443 — a direct API server (`:8642`) or a LAN address. You can also leave the scheme out: a public hostname is treated as `https`, a LAN or loopback address as `http`.
+
 **Behind Cloudflare Access, an authenticating proxy or a gateway that wants its own headers**, add them in *Extra request headers* (one `Name: value` per line):
 
 ```

@@ -99,7 +99,7 @@ export class HermesSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("API server URL")
       .setClass("hermes-wide")
-      .setDesc("Root of the Hermes API server — no /v1 suffix. Local default: http://127.0.0.1:8642")
+      .setDesc("Root of the Hermes API server — no /v1 suffix. The port is optional: https://hermes.example.com works when a tunnel or proxy serves it on 443. Without a scheme, a public hostname becomes https and a LAN or loopback address stays http. Local default: http://127.0.0.1:8642")
       .addText((text) =>
         text
           .setPlaceholder("http://127.0.0.1:8642")

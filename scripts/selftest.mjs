@@ -53,6 +53,52 @@ test("endpointsFor builds the profile-prefixed v1 URL", () => {
   assert.equal(hermes.endpointsFor("http://h:8642/", "alice").v1, "http://h:8642/p/alice/v1");
 });
 
+test("normalizeBaseUrl accepts a URL without a port and picks the right scheme", () => {
+  // no port + public host -> https on 443
+  assert.equal(hermes.normalizeBaseUrl("hermes.example.com"), "https://hermes.example.com");
+  assert.equal(hermes.normalizeBaseUrl("hermes.example.com/"), "https://hermes.example.com");
+  assert.equal(hermes.normalizeBaseUrl("hermes.example.com/v1"), "https://hermes.example.com");
+  assert.equal(hermes.normalizeBaseUrl("hermes.example.com:443"), "https://hermes.example.com:443");
+  // an explicit scheme is never overridden
+  assert.equal(hermes.normalizeBaseUrl("https://hermes.example.com"), "https://hermes.example.com");
+  assert.equal(hermes.normalizeBaseUrl("http://hermes.example.com"), "http://hermes.example.com");
+  // a non-standard port means plain HTTP on that port
+  assert.equal(hermes.normalizeBaseUrl("hermes.example.com:8642"), "http://hermes.example.com:8642");
+  // LAN, loopback and single-label hosts stay on http
+  assert.equal(hermes.normalizeBaseUrl("192.168.1.10"), "http://192.168.1.10");
+  assert.equal(hermes.normalizeBaseUrl("192.168.1.10:8642"), "http://192.168.1.10:8642");
+  assert.equal(hermes.normalizeBaseUrl("myserver"), "http://myserver");
+  assert.equal(hermes.normalizeBaseUrl("myserver.local"), "http://myserver.local");
+  assert.equal(hermes.normalizeBaseUrl("127.0.0.1"), "http://127.0.0.1");
+  assert.equal(hermes.normalizeBaseUrl(""), "http://127.0.0.1:8642");
+});
+
+test("port-less URLs build the documented endpoints", () => {
+  assert.equal(hermes.portOfUrl("hermes.example.com"), "");
+  assert.equal(hermes.portOfUrl("hermes.example.com:443"), "443");
+  assert.equal(hermes.portOfUrl("http://[::1]:8642/v1"), "8642");
+  assert.equal(hermes.hostOfUrl("http://[::1]:8642/v1"), "[::1]");
+  assert.equal(hermes.endpointsFor("hermes.example.com", "").v1, "https://hermes.example.com/v1");
+  assert.equal(hermes.endpointsFor("hermes.example.com", "").scoped, "https://hermes.example.com");
+  assert.equal(hermes.endpointsFor("hermes.example.com", "alice").v1, "https://hermes.example.com/p/alice/v1");
+  const client = new hermes.HermesClient(Object.assign({}, hermes.DEFAULT_SETTINGS, { baseUrl: "hermes.example.com" }));
+  assert.equal(client.url("/health"), "https://hermes.example.com/health");
+  assert.equal(client.url("/v1/models"), "https://hermes.example.com/v1/models");
+  assert.equal(client.url("/v1/chat/completions"), "https://hermes.example.com/v1/chat/completions");
+});
+
+test("loopback is safe on a phone, private LAN addresses are not", () => {
+  hermes.setPlatform({ isMobile: false, isDesktop: true });
+  assert.equal(hermes.cleartextWarning("http://hermes.example.com"), "", "desktop is never warned");
+  hermes.setPlatform({ isMobile: true, isDesktop: false });
+  assert.ok(hermes.cleartextWarning("http://hermes.example.com").length > 0, "public host on mobile must warn");
+  assert.ok(hermes.cleartextWarning("http://192.168.1.10:8642").length > 0, "LAN host on mobile must warn");
+  assert.equal(hermes.cleartextWarning("http://127.0.0.1:8642"), "", "loopback is fine on mobile");
+  assert.equal(hermes.cleartextWarning("http://localhost:8642"), "");
+  assert.equal(hermes.cleartextWarning("https://hermes.example.com"), "", "HTTPS is the fix");
+  hermes.setPlatform({ isMobile: false, isDesktop: true });
+});
+
 test("obsidianOrigins lists the shapes a plugin can present", () => {
   const origins = hermes.obsidianOrigins();
   assert.ok(origins.includes("app://obsidian.md"));

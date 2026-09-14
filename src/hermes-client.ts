@@ -66,12 +66,72 @@ export interface ChatOptions {
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:[/]{2}/i;
 const TRAILING_SLASH_RE = /[/]+$/;
 const TRAILING_V1_RE = /[/]v1$/i;
+const PRIVATE_HOST_RE = /^(localhost|127[.]|10[.]|192[.]168[.]|172[.](1[6-9]|2[0-9]|3[01])[.]|169[.]254[.]|\[?::1\]?)/i;
 
-/** `http://host:8642/` / `host:8642/v1` -> `http://host:8642` */
+/** Authority part of a URL or bare `host:port` string (no userinfo). */
+function authorityOf(value: string): string {
+  const scheme = value.indexOf("://");
+  const rest = scheme >= 0 ? value.slice(scheme + 3) : value;
+  let end = rest.length;
+  for (const stop of ["/", "?", "#"]) {
+    const index = rest.indexOf(stop);
+    if (index >= 0 && index < end) end = index;
+  }
+  const authority = rest.slice(0, end);
+  const at = authority.lastIndexOf("@");
+  return at >= 0 ? authority.slice(at + 1) : authority;
+}
+
+/** Explicit port, or "" when the URL leaves it out. */
+export function portOfUrl(value: string): string {
+  const authority = authorityOf(value);
+  const colon = authority.lastIndexOf(":");
+  if (colon < 0) return "";
+  const port = authority.slice(colon + 1);
+  return /^[0-9]+$/.test(port) ? port : "";
+}
+
+export function hostOfUrl(value: string): string {
+  const hostPort = authorityOf(value);
+  const colon = hostPort.lastIndexOf(":");
+  const host = colon >= 0 ? hostPort.slice(0, colon) : hostPort;
+  return host.toLowerCase();
+}
+
+/** Same device: the only HTTP target a phone may talk to. */
+export function isLoopbackHost(host: string): boolean {
+  if (!host) return true;
+  return /^(localhost|127[.]|\[?::1\]?$)/i.test(host) || host === "[::1]";
+}
+
+/**
+ * Loopback, private LAN, mDNS and single-label hosts are treated as local — they
+ * are reached over plain HTTP; any other hostname defaults to HTTPS.
+ */
+export function looksLocalHost(host: string): boolean {
+  if (!host) return true;
+  if (PRIVATE_HOST_RE.test(host)) return true;
+  if (host.endsWith(".local") || host.endsWith(".localhost")) return true;
+  return host.indexOf(".") < 0;
+}
+
+/**
+ * `http://host:8642/` / `host:8642/v1` / `hermes.example.com` -> a usable base.
+ *
+ * The port is optional: with no port the request goes to 80/443, which is what
+ * a tunnel or reverse proxy serving the API server on 443 expects. When no
+ * scheme is given, a public hostname becomes https (unless it names a port
+ * other than 443), while loopback and LAN addresses stay on http.
+ */
 export function normalizeBaseUrl(raw: string): string {
   let value = (raw || "").trim();
-  if (!value) value = "http://127.0.0.1:8642";
-  if (!SCHEME_RE.test(value)) value = "http://" + value;
+  if (!value) return "http://127.0.0.1:8642";
+  if (!SCHEME_RE.test(value)) {
+    const host = hostOfUrl(value);
+    const port = portOfUrl(value);
+    const scheme = !looksLocalHost(host) && (port === "" || port === "443") ? "https" : "http";
+    value = scheme + "://" + value;
+  }
   value = value.replace(TRAILING_SLASH_RE, "");
   value = value.replace(TRAILING_V1_RE, "");
   value = value.replace(TRAILING_SLASH_RE, "");
@@ -123,20 +183,7 @@ export function parseExtraHeaders(raw: string): Record<string, string> {
 }
 
 function hostOf(url: string): string {
-  const scheme = url.indexOf("://");
-  if (scheme < 0) return "";
-  const rest = url.slice(scheme + 3);
-  let end = rest.length;
-  for (const stop of ["/", "?", "#"]) {
-    const index = rest.indexOf(stop);
-    if (index >= 0 && index < end) end = index;
-  }
-  const authority = rest.slice(0, end);
-  const at = authority.lastIndexOf("@");
-  const hostPort = at >= 0 ? authority.slice(at + 1) : authority;
-  const colon = hostPort.lastIndexOf(":");
-  const host = colon >= 0 ? hostPort.slice(0, colon) : hostPort;
-  return host.toLowerCase();
+  return hostOfUrl(url.indexOf("://") >= 0 ? url : "http://" + url);
 }
 
 /**
@@ -147,14 +194,22 @@ export function cleartextWarning(url: string): string {
   if (!Platform.isMobile) return "";
   if (!url || url.slice(0, 7).toLowerCase() !== "http://") return "";
   const host = hostOf(url);
-  if (!host || host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") {
-    return "";
-  }
+  if (!host || isLoopbackHost(host)) return "";
   return (
     "This device is on mobile and the URL uses plain HTTP to another machine, which iOS and Android block. " +
     "Reach Hermes over HTTPS instead — Tailscale (`tailscale serve`), Cloudflare Tunnel, or a TLS reverse proxy."
   );
 }
+
+/** Nudge towards HTTPS when a public plain-HTTP host cannot be reached. */
+function httpsHint(url: string): string {
+  if (cleartextWarning(url)) return "";
+  if (!url || url.slice(0, 7).toLowerCase() !== "http://") return "";
+  const host = hostOf(url);
+  if (!host || isLoopbackHost(host)) return "";
+  return " If that host serves HTTPS, use https://" + host + " — the port can be left out when a proxy or tunnel terminates TLS on 443.";
+}
+
 
 function firstLine(text: string, limit = 300): string {
   const flat = (text || "").replace(/\s+/g, " ").trim();
@@ -199,7 +254,7 @@ function httpError(status: number, body: string, url: string): HermesError {
 function networkError(err: unknown, url: string): HermesError {
   if (isAbortError(err)) return new HermesError("Stopped.", "aborted");
   const msg = err instanceof Error ? err.message : String(err);
-  const hint = cleartextWarning(url);
+  const hint = cleartextWarning(url) || httpsHint(url);
   return new HermesError("Could not reach Hermes at " + url + " — " + msg + (hint ? " " + hint : ""), "network");
 }
 
