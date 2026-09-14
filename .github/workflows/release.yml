@@ -1,0 +1,48 @@
+name: Release
+
+# Builds the plugin and attaches the three files BRAT and manual installs need.
+# Triggered by pushing a version tag (v1.2.3) or manually from the Actions tab.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify the build outputs exist
+        run: |
+          test -f main.js
+          test -f manifest.json
+          test -f styles.css
+          node -e "const m=require('./manifest.json');const v=require('./package.json');if(m.version!==v.version){throw new Error('manifest.json '+m.version+' does not match package.json '+v.version)}"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            main.js
+            manifest.json
+            styles.css
+          generate_release_notes: true

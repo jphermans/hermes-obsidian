@@ -1,58 +1,59 @@
 # Hermes Agent Notes
 
-An Obsidian plugin that writes and repairs Markdown notes with a self-hosted **Hermes Agent** instance — local or remote — following *your* vault's own Obsidian conventions.
+**Write and repair Obsidian notes with your own [Hermes Agent](https://github.com/NousResearch/hermes-agent) instance — local or remote — following your vault's Obsidian conventions.**
 
-Hermes runs on your machine (or a server you own). The plugin talks to it over its OpenAI-compatible API server, sends the note request plus a summary of how your vault writes Markdown, and writes the resulting note into the vault itself. On desktop and on iOS/Android.
+[![Release](https://img.shields.io/github/v/release/jphermans/hermes-obsidian?sort=semver)](https://github.com/jphermans/hermes-obsidian/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> Works with any Hermes Agent install (`hermes gateway` with `API_SERVER_ENABLED=true`). Nothing is sent to a third-party service unless your Hermes instance is configured to use one.
+Hermes runs on your machine or on a server you own. The plugin talks to its OpenAI-compatible API server, sends your request together with a summary of how *your* vault writes Markdown, and writes the finished note into the vault itself — on desktop and on iOS/Android. No third-party service is involved beyond whatever your Hermes instance already uses.
 
-## What it does
+---
 
-| Command | What happens |
-| --- | --- |
-| **Create a note from a prompt** | Describe the note. Hermes writes a complete file — properties, headings, wikilinks, tags — and you confirm it in a preview. |
-| **Improve the active note** | Rewrites the open note, keeping every existing property and link. |
-| **Rewrite the active note with an instruction** | "shorter", "add a decisions table", "split this into a project note". |
-| **Fix the active note for Obsidian** | Repairs Obsidian syntax only (broken wikilinks, illegal characters, malformed frontmatter, heading jumps, curly quotes) without changing your prose. |
-| **Ask Hermes about the active note** | Vault-aware answers with *Insert at cursor* / *Append* / *Save as note*. |
-| **Turn the selection into a note** | Selection as source material for a new note. |
-| **Insert a Hermes answer at the cursor** | Inline help without leaving the editor. |
-| **Open the chat panel** | Side panel with history, streaming, and note actions on every answer. |
-| **Show / rescan vault conventions** | See exactly what the plugin learned about your vault. |
-| **Test the Hermes connection** | Health + model discovery, with a plain-language diagnosis. |
+## Contents
 
-Every write goes through a preview that shows the file name, a rendered preview, the raw Markdown you can edit, and the Obsidian syntax checks.
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Install with BRAT](#install-with-brat)
+- [Setup](#setup)
+- [Commands](#commands)
+- [Following Obsidian's rules](#following-obsidians-rules)
+- [Mobile](#mobile)
+- [Data, privacy and safety](#data-privacy-and-safety)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Releasing (BRAT)](#releasing-brat)
 
-## Following Obsidian's rules
+---
 
-A model that knows Markdown still gets Obsidian wrong, so the plugin does two things:
+## How it works
 
-1. **It carries the Obsidian format rules** — `---` YAML properties with no tabs and real date/boolean types, one H1 then H2/H3 without skipping levels, `[[Wikilinks]]` instead of `[path](note.md)`, `[[Note|alias]]`, `[[Note#Heading]]`, `[[Note#^block]]`, `![[embeds]]`, nested `#tag/child`, `> [!note]` callouts, two-space list nesting, `- [ ]` tasks, code fences with a language, straight quotes, and the file-name characters Obsidian refuses to store.
-2. **It learns your vault's conventions** before asking: which properties you use and their types, tag style, wikilink vs Markdown links, whether notes open with an H1, your file-name style, the callouts you actually use, and the notes in the target folder so links resolve to real notes.
+1. **You ask.** "Meeting notes for the kitchen renovation kickoff", "improve this note", "fix the Obsidian formatting".
+2. **The plugin adds context.** A summary of your vault's own conventions (properties and their types, tag style, link style, headings, file names, callouts) plus the names of notes in the target folder, so links resolve to real notes. It also carries the full Obsidian Markdown syntax rules.
+3. **You confirm.** Hermes returns the complete note file; you see a rendered preview, the raw Markdown you can edit, the file name, and Obsidian syntax checks. Nothing is written until you press the button.
 
-Press **Show detected vault conventions** to inspect or rescan that analysis. Nothing but that summary and the notes you explicitly send ever leaves the vault.
+Hermes never needs access to your vault — the plugin does all the file work.
+
+## Requirements
+
+* Obsidian **1.5.0** or newer (desktop, iOS or Android).
+* A Hermes Agent install with its API server enabled (`API_SERVER_ENABLED=true`) and reachable from the device running Obsidian.
+* The `API_SERVER_KEY` from that instance.
 
 ## Install with BRAT
 
-BRAT installs straight from this repo's GitHub releases, so no manual file copying:
+1. Install **BRAT** (*Obsidian42 - BRAT*) from Community plugins.
+2. Command palette → **BRAT: Add a beta plugin for testing**.
+3. Enter `jphermans/hermes-obsidian` and confirm.
+4. Enable **Hermes Agent Notes** in *Settings → Community plugins*.
+5. Open *Settings → Hermes Agent Notes* and fill in your Hermes connection.
 
-1. Command palette → **BRAT: Add a beta plugin for testing**
-2. Enter `jphermans/hermes-obsidian`
-3. Enable **Hermes Agent Notes** in *Settings → Community plugins*
+BRAT installs the newest GitHub release. To update later: **BRAT: Check for updates to all beta plugins**.
 
-A release must exist with the three built files attached:
+<details>
+<summary>Manual install instead</summary>
 
-```bash
-npm run build
-gh release create v0.1.0 \
-  --title "v0.1.0 — first release" \
-  --notes "Connects Obsidian to a Hermes Agent instance and writes notes that follow the vault's own Obsidian conventions." \
-  main.js manifest.json styles.css
-```
-
-Bump `manifest.json`, `package.json` and `versions.json` together before every release — BRAT only picks up a new version when `manifest.json` changes.
-
-**Manual install instead** — copy `main.js`, `manifest.json` and `styles.css` into `<vault>/.obsidian/plugins/hermes-agent-notes/`.
+Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/jphermans/hermes-obsidian/releases/latest) and place them in `<vault>/.obsidian/plugins/hermes-agent-notes/`, then enable the plugin.
+</details>
 
 ## Setup
 
@@ -64,25 +65,40 @@ hermes config set API_SERVER_KEY my-secret-key
 hermes gateway stop && hermes gateway
 ```
 
-The flag lands in `config.yaml`, the key in `~/.hermes/.env`. You should see `[API Server] API server listening on http://127.0.0.1:8642`.
+The flag lands in `config.yaml`, the key in `~/.hermes/.env`. You should see:
 
-### 2. Check it is reachable
+```
+[API Server] API server listening on http://127.0.0.1:8642
+```
+
+### 2. Check that it answers
 
 ```bash
 curl -s http://127.0.0.1:8642/health
 curl -s -H "Authorization: Bearer my-secret-key" http://127.0.0.1:8642/v1/models
 ```
 
+The first returns `{"status": "ok"}`; the second lists the agent as a model. A `401` means the key does not match.
+
 ### 3. Fill in the plugin
 
-*Settings → Hermes Agent Notes*: API server URL (`http://127.0.0.1:8642`), the same API key, then **Test connection**. The status card turns green and shows the advertised model name.
+*Settings → Hermes Agent Notes*:
+
+| Field | Value |
+| --- | --- |
+| API server URL | `http://127.0.0.1:8642` (no `/v1` suffix) |
+| API key | the same value as `API_SERVER_KEY` |
+| Model | leave `hermes-agent` — Hermes normally uses its own configured default |
+| Profile prefix | only when the gateway serves several profiles |
+
+Press **Test connection**. A green card with the advertised model name means you are connected.
 
 ### Remote instances
 
-* Bind beyond loopback (`API_SERVER_HOST=0.0.0.0`) or publish through a tunnel, then use that address.
-* **Prefer HTTPS.** iOS and Android are stricter than desktop about plain-HTTP traffic, so a TLS reverse proxy (Caddy, Tailscale, Cloudflare Tunnel) is the reliable path on mobile.
-* The key guards a full agent with terminal access. Treat it like an SSH password.
-* Several profiles: give each its own port and key, or enable `gateway.multiplex_profiles` and set the profile prefix — `/p/<profile>` accepts only that profile's own key.
+* Bind beyond loopback (`API_SERVER_HOST=0.0.0.0`) or publish it through a tunnel, then use that address in the plugin.
+* **Prefer HTTPS.** iOS and Android are far stricter than desktop about plain-HTTP traffic, so a TLS reverse proxy (Caddy, Tailscale, Cloudflare Tunnel) is the reliable path on mobile.
+* The key protects a full agent with terminal access. Treat it like an SSH password.
+* **Several profiles:** give each its own port and key, or enable `gateway.multiplex_profiles` and set the profile prefix — `/p/<profile>` accepts only that profile's own key.
 
 ### Streaming (optional)
 
@@ -92,38 +108,102 @@ Live token output is a browser request, so the Hermes side needs an explicit ori
 API_SERVER_CORS_ORIGINS=app://obsidian.md,capacitor://localhost,http://localhost
 ```
 
-Restart the gateway afterwards. Desktop presents `app://obsidian.md`, iOS `capacitor://localhost`, Android `http://localhost`. With streaming off (the default) the plugin uses Obsidian's native HTTP client and no CORS entry is needed at all — and if a streaming request is refused, it falls back to that transport automatically.
+Restart the gateway afterwards. Desktop presents `app://obsidian.md`, iOS `capacitor://localhost`, Android `http://localhost`. With **Stream answers** off (the default) the plugin uses Obsidian's native HTTP client and needs no CORS entry at all — and if a streaming request is refused, it falls back to that transport automatically.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| **Open the chat panel** | Sidebar conversation with history, streaming and note actions. |
+| **Create a note from a prompt** | Writes a complete new note — properties, headings, wikilinks, tags — for you to confirm. |
+| **Improve the active note** | Rewrites the open note, keeping every existing property, link and fact. |
+| **Rewrite the active note with an instruction** | "shorter", "add a decisions table", "split this into a project note". |
+| **Fix the active note for Obsidian** | Repairs Obsidian syntax only — broken wikilinks, illegal characters, malformed frontmatter, heading jumps, curly quotes — without touching your prose. |
+| **Ask Hermes about the active note** | Vault-aware answers with *Insert at cursor* / *Append* / *Save as note*. |
+| **Turn the selection into a note** | Uses the selected text as source material. |
+| **Insert a Hermes answer at the cursor** | Inline help without leaving the editor. |
+| **Test the Hermes connection** | Health check plus model discovery, with a plain-language diagnosis. |
+| **Show detected vault conventions** | See exactly what the plugin learned — and rescan it. |
+| **Rescan vault conventions** | Force a fresh analysis. |
+
+## Following Obsidian's rules
+
+A model that knows Markdown still gets Obsidian wrong, so the plugin does two things.
+
+**It carries the Obsidian format rules** — `---` YAML properties with no tabs and real date/boolean types, one H1 then H2/H3 without skipping levels, `[[Wikilinks]]` instead of `[path](note.md)`, `[[Note|alias]]`, `[[Note#Heading]]`, `[[Note#^block]]`, `![[embeds]]`, nested `#tag/child`, `> [!note]` callouts, two-space list nesting, `- [ ]` tasks, tables, fenced code with a language, straight quotes, and the file-name characters Obsidian refuses to store.
+
+**It learns your vault first** — which properties you use and their types, whether values are quoted, tag style, wikilink versus Markdown links, whether notes open with an H1, your file-name style, the callouts you actually use, and the notes in the target folder so wikilinks point at real notes.
+
+Every generated note is checked before it is written: property/word/link counts, balanced `[[ ]]`, `.md` links that should be wikilinks, heading level jumps, tabs in YAML, unparsed frontmatter, illegal file-name characters.
+
+On a rewrite, existing frontmatter values are preserved and missing keys added — properties are never silently replaced.
 
 ## Mobile
 
-The plugin is `isDesktopOnly: false` and was written for it:
+Hermes Agent Notes is `isDesktopOnly: false` and was written for mobile from the start:
 
-* Obsidian's native `requestUrl` for every normal call — no CORS, no cleartext-traffic surprises from a browser transport, works on iOS and Android.
-* No Node.js imports anywhere (that is what crashes plugins on mobile).
-* No auto-focus on mobile, so the keyboard never covers a dialog; 16px inputs so iOS does not zoom; 44px touch targets in a responsive layout; clipboard fallback for older WebViews.
+* Obsidian's native `requestUrl` for every normal call — no CORS, no browser cleartext-traffic restrictions, identical on iOS and Android.
+* No Node.js imports anywhere (the usual reason plugins crash on mobile).
+* No auto-focus on mobile, so the keyboard never covers a dialog; 16px inputs so iOS does not zoom the viewport; 44px touch targets; responsive layout; clipboard fallback for older WebViews.
 * The chat panel is a normal sidebar view, so it works on phones and tablets.
 
-## Files and data
+The vault-convention scan reads from Obsidian's cache and takes ~20 ms on a 585-note vault.
 
-* Settings live in `<vault>/.obsidian/plugins/hermes-agent-notes/data.json` — including the API key. Keep the vault private, and prefer a key you can rotate.
-* The plugin never modifies notes you did not ask it to touch; rewrites keep existing frontmatter values and add missing keys instead of replacing them.
-* Requests go to your Hermes instance only. Session IDs are opt-in and only used so long runs appear in Hermes session history.
+## Data, privacy and safety
+
+* Settings — including the API key — live in `<vault>/.obsidian/plugins/hermes-agent-notes/data.json`. Keep the vault private and prefer a key you can rotate.
+* Only two things leave the vault: the conventions summary and the notes you explicitly send as context (trimmed to ~12 000 characters). The scan itself never leaves your machine.
+* The plugin never touches a note you did not ask it to change, and every write goes through the preview.
+* Requests go only to the Hermes URL you configure. Session reporting is opt-in and exists so long runs appear in Hermes session history.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| **Connection failed — could not reach Hermes** | Is `hermes gateway` running with `API_SERVER_ENABLED=true`? Is the host/port right, and reachable from this device? |
+| **HTTP 401 / rejected the request** | The API key does not match `API_SERVER_KEY` on the host. |
+| **HTTP 404** | Wrong base URL, or a profile prefix set while the gateway is not running in multi-profile mode. Remove any `/v1` suffix from the URL. |
+| **HTTP 429** | Too many concurrent runs on the Hermes side — retry, or raise `gateway.api_server.max_concurrent_runs`. |
+| **No model in the dropdown** | Harmless: `/v1/models` advertises one agent name. Press *Test connection* and use that name. |
+| **Streaming was refused** | Add the `API_SERVER_CORS_ORIGINS` line above and restart the gateway, or turn streaming off. |
+| **Mobile cannot reach a plain-HTTP instance** | Put it behind HTTPS (Tailscale, Caddy, Cloudflare Tunnel) — mobile OSes are stricter than desktop about cleartext traffic. |
+| **The note ignores my model choice** | Hermes uses its own default model unless you also set a **provider override** (or enable `gateway.platforms.api_server.direct_model_requests` on the host). |
+| **Notes do not match my style** | Run **Show detected vault conventions** to see what was inferred, raise *Notes to analyse*, then rescan. |
 
 ## Development
 
 ```bash
 npm install
-npm run dev      # watch build
+npm run dev      # esbuild watch build
 npm run build    # tsc --noEmit + esbuild production
 npm test         # unit tests + API/SSE tests against a mock Hermes server
 ```
 
-`npm test` bundles the tested modules with `scripts/obsidian-stub.mjs` standing in for the Obsidian runtime (`js-yaml` stands in for its YAML parser, test-only), then runs:
+`npm test` bundles the tested modules with `scripts/obsidian-stub.mjs` standing in for the Obsidian runtime (`js-yaml` stands in for its YAML parser — test-only), then runs:
 
 * `scripts/selftest.mjs` — URL handling, file-name sanitising, model-output unwrapping, frontmatter split/merge, the syntax validator, prompt construction, the vault-convention scan, and real writes against an in-memory vault.
 * `scripts/mock-server-test.mjs` — the shipped client against a mock Hermes API server: `/health`, `/v1/models`, `/v1/capabilities`, buffered and SSE completions, headers, and the 401/404 error mapping.
-* `scripts/vault-dryrun.mjs <vaultPath> [sample]` — runs the convention engine over a real vault and prints what Hermes would be told (handy when tuning prompts).
+* `scripts/vault-dryrun.mjs <vaultPath> [sample]` — runs the convention engine over a real vault and prints exactly what Hermes would be told.
+
+Layout: `src/main.ts` (plugin, commands), `src/settings.ts` (setup page), `src/hermes-client.ts` (API client, transports), `src/vault-rules.ts` (vault scan), `src/prompts.ts` (Obsidian rules + context), `src/note-writer.ts` (names, frontmatter, writes), `src/validate.ts` (syntax checks), `src/ui/*` (modals and chat panel).
+
+## Releasing (BRAT)
+
+BRAT reads the newest **release**, and its assets must be the built files:
+
+```bash
+# 1. bump the version in package.json, manifest.json and versions.json
+npm run build
+git commit -am "Release v0.1.1"
+
+# 2. tag and publish with the three files attached
+git tag v0.1.1 && git push origin main --tags
+gh release create v0.1.1 --title "v0.1.1 — <summary>" --notes "<release notes>" \
+  main.js manifest.json styles.css
+```
+
+Pushing a tag also triggers `.github/workflows/release.yml`, which rebuilds and attaches the assets automatically. `main.js` is committed on purpose — Obsidian loads it directly.
 
 ## Licence
 
-MIT — see `LICENSE`.
+MIT — see [LICENSE](LICENSE).
