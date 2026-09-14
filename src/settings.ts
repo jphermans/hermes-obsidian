@@ -1,6 +1,8 @@
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type HermesAgentNotesPlugin from "./main";
 import { cleartextWarning, describeError, endpointsFor, obsidianOrigins } from "./hermes-client";
+import { REMOTE_PRESETS, mergeHeaderLines, presetFor } from "./remote";
+import type { AccessMode } from "./types";
 import { copyText } from "./ui/clipboard";
 import { listFolders } from "./vault-rules";
 
@@ -18,6 +20,7 @@ export class HermesSettingTab extends PluginSettingTab {
     containerEl.addClass("hermes-settings");
 
     this.renderConnection(containerEl);
+    this.renderRemoteAccess(containerEl);
     this.renderNotes(containerEl);
     this.renderConventions(containerEl);
     this.renderGuide(containerEl);
@@ -261,6 +264,81 @@ export class HermesSettingTab extends PluginSettingTab {
             void this.plugin.saveSettings();
           })
       );
+  }
+
+  // --- remote access -------------------------------------------------------
+
+  private renderRemoteAccess(containerEl: HTMLElement): void {
+    containerEl.createEl("h2", { text: "Remote access — when Hermes is not local" });
+
+    const mode = this.plugin.settings.accessMode;
+    const preset = presetFor(mode);
+
+    new Setting(containerEl)
+      .setName("How do you reach Hermes?")
+      .setDesc(
+        "Picks the recipe, the URL shape and the headers this route needs. It never rewrites the URL by itself — press the button below when you want that URL filled in."
+      )
+      .addDropdown((dropdown) => {
+        for (const entry of REMOTE_PRESETS) dropdown.addOption(entry.id, entry.label);
+        dropdown.setValue(mode);
+        dropdown.onChange((value) => {
+          this.plugin.settings.accessMode = value as AccessMode;
+          void this.plugin.saveSettings();
+          this.display();
+        });
+      });
+
+    const card = containerEl.createDiv({ cls: "hermes-callout" });
+    card.createEl("p", { text: preset.summary });
+    if (preset.commands.length > 0) {
+      this.codeBlock(card, preset.commands, "Copy commands");
+    }
+    for (const note of preset.notes) {
+      card.createEl("p", { cls: "setting-item-description", text: note });
+    }
+
+    const buttons = card.createDiv({ cls: "hermes-notes-buttons" });
+    if (preset.urlTemplate) {
+      const useTemplate = buttons.createEl("button", { text: "Use " + preset.urlTemplate });
+      useTemplate.addEventListener("click", () => {
+        this.plugin.settings.baseUrl = preset.urlTemplate as string;
+        this.plugin.settings.connection = null;
+        void this.plugin.saveSettings().then(() => this.display());
+      });
+    }
+    const headerLines = preset.requiredHeaders.concat(preset.optionalHeaders);
+    if (headerLines.length > 0) {
+      const insert = buttons.createEl("button", { text: "Insert needed headers", cls: "mod-cta" });
+      insert.addEventListener("click", () => {
+        const merged = mergeHeaderLines(this.plugin.settings.extraHeaders, headerLines);
+        this.plugin.settings.extraHeaders = merged.text;
+        this.plugin.settings.connection = null;
+        void this.plugin.saveSettings().then(() => this.display());
+        new Notice(
+          merged.added.length > 0
+            ? "Added " + merged.added.length + " header line(s) — fill in the real values."
+            : "Those headers are already set."
+        );
+      });
+    }
+    const testRoute = buttons.createEl("button", { text: "Test this route" });
+    testRoute.addEventListener("click", () => void this.plugin.testConnectionWithNotice());
+
+    if (!preset.mobileSafe) {
+      const warn = card.createDiv({ cls: "hermes-callout hermes-callout-warn" });
+      warn.createEl("p", {
+        text: "Phones and tablets cannot use this route: iOS and Android refuse plain-HTTP requests to another machine. Pick Tailscale, Cloudflare or ngrok for mobile use.",
+      });
+    }
+
+    const baseUrl = this.plugin.settings.baseUrl.trim();
+    if (preset.id !== "local" && preset.id !== "lan" && baseUrl.length > 0 && !baseUrl.toLowerCase().startsWith("https://")) {
+      const warn = card.createDiv({ cls: "hermes-callout hermes-callout-warn" });
+      warn.createEl("p", {
+        text: "This route needs an https:// URL — the one currently configured (" + baseUrl + ") is not HTTPS.",
+      });
+    }
   }
 
   // --- note writing --------------------------------------------------------

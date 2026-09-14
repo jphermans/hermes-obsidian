@@ -113,7 +113,9 @@ Restart the gateway afterwards. Desktop presents `app://obsidian.md`, iOS `capac
 
 ## Reachable from anywhere
 
-Phones and tablets refuse plain HTTP to another machine (iOS ATS, Android network security), so `http://192.168.x.x:8642` works on desktop but not on mobile. Expose the API server over HTTPS and the same URL works from every device, on any network:
+Phones and tablets refuse plain HTTP to another machine (iOS ATS, Android network security), so `http://192.168.x.x:8642` works on desktop but not on mobile. Expose the API server over HTTPS and the same URL works from every device, on any network.
+
+The setup page asks **How do you reach Hermes?** — local, same-network, Tailscale, Cloudflare Tunnel, ngrok, or a custom HTTPS proxy — and then shows that route's commands, its URL shape, the headers it needs, whether phones can use it, and a **Test this route** button. Nothing is rewritten behind your back: press *Use …* to drop the URL template in, *Insert needed headers* to add what the route requires.
 
 ```bash
 # Tailscale — HTTPS address for every device on your tailnet, nothing public
@@ -121,6 +123,10 @@ tailscale serve --bg 8642          # then use https://<machine>.<tailnet>.ts.net
 
 # Cloudflare Tunnel — public HTTPS hostname without opening a port
 cloudflared tunnel --url http://127.0.0.1:8642
+
+# ngrok — quick public HTTPS URL for testing from a phone
+ngrok http 8642
+ngrok http --url=your-name.ngrok.app 8642      # reserved domain, stable URL
 ```
 
 ```caddyfile
@@ -140,6 +146,8 @@ CF-Access-Client-Secret: yyyy
 ```
 
 A header named `Authorization` replaces the API key. The plugin warns you in-app when the configured URL is plain HTTP while you are on a mobile device, and it names HTTPS as the fix instead of failing silently.
+
+**Two gotchas on these routes.** Cloudflare Tunnel quick tunnels get a new random URL on every restart — use a named tunnel for anything permanent, and put Cloudflare Access (service token) in front of it. ngrok's free tier shows an interstitial page to browsers, which the suggested `ngrok-skip-browser-warning: true` header skips; do **not** use `ngrok --basic-auth`, because its `Authorization` header would replace your Hermes API key.
 
 **Security.** The key protects a full agent with terminal access on that machine. Prefer Tailscale or Cloudflare Access over a bare public port, and rotate `API_SERVER_KEY` if it ever leaks.
 

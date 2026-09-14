@@ -374,6 +374,69 @@ await testAsync("writeNote creates, refuses duplicates, overwrites and appends",
   assert.equal(await vault.read(created), "second\n\nappended\n");
 });
 
+// --- remote access presets ------------------------------------------------
+
+test("every access route is complete and unique", () => {
+  const ids = hermes.REMOTE_PRESETS.map((preset) => preset.id);
+  assert.equal(new Set(ids).size, ids.length, "duplicate preset id");
+  for (const id of ["local", "lan", "tailscale", "cloudflare", "ngrok", "custom"]) {
+    assert.ok(ids.includes(id), "missing preset: " + id);
+  }
+  for (const preset of hermes.REMOTE_PRESETS) {
+    assert.ok(preset.label.length > 10, preset.id + " label too vague");
+    assert.ok(preset.summary.length > 20, preset.id + " summary too short");
+    assert.ok(preset.notes.length > 0, preset.id + " has no notes");
+    if (preset.id !== "local" && preset.id !== "lan") {
+      assert.ok(preset.notes.length >= 1);
+    }
+  }
+});
+
+test("non-local HTTPS routes are marked mobile-safe, plain LAN is not", () => {
+  assert.equal(hermes.presetFor("lan").mobileSafe, false, "plain HTTP on LAN must warn about phones");
+  assert.equal(hermes.presetFor("local").mobileSafe, true);
+  for (const id of ["tailscale", "cloudflare", "ngrok", "custom"]) {
+    const preset = hermes.presetFor(id);
+    assert.equal(preset.mobileSafe, true, id + " should be usable on a phone");
+    assert.ok(preset.urlTemplate && preset.urlTemplate.startsWith("https://"), id + " needs an https template");
+    assert.ok(preset.commands.length > 0, id + " has no commands");
+  }
+});
+
+test("cloudflare carries Access headers and ngrok the interstitial skip", () => {
+  const cloudflare = hermes.presetFor("cloudflare");
+  assert.deepEqual(cloudflare.requiredHeaders, ["CF-Access-Client-Id: <id>.access", "CF-Access-Client-Secret: <secret>"]);
+  const ngrok = hermes.presetFor("ngrok");
+  assert.deepEqual(ngrok.optionalHeaders, ["ngrok-skip-browser-warning: true"]);
+  assert.equal(ngrok.requiredHeaders.length, 0);
+  // ngrok basic-auth would overwrite the Hermes key, so it must not be suggested.
+  const allHeaders = ngrok.requiredHeaders.concat(ngrok.optionalHeaders).join("\n").toLowerCase();
+  assert.ok(!allHeaders.includes("authorization"), "ngrok preset must not set Authorization");
+  assert.ok(ngrok.notes.join(" ").toLowerCase().includes("basic-auth"), "ngrok note must warn about --basic-auth");
+});
+
+test("presetFor falls back to local for an unknown mode", () => {
+  assert.equal(hermes.presetFor("nonsense").id, "local");
+  assert.equal(hermes.presetFor(undefined).id, "local");
+});
+
+test("mergeHeaderLines adds missing headers once and keeps existing ones", () => {
+  const first = hermes.mergeHeaderLines("", ["CF-Access-Client-Id: a.access", "ngrok-skip-browser-warning: true"]);
+  assert.equal(first.text, "CF-Access-Client-Id: a.access\nngrok-skip-browser-warning: true");
+  assert.equal(first.added.length, 2);
+
+  const again = hermes.mergeHeaderLines(first.text, ["CF-Access-Client-Id: b.access"]);
+  assert.equal(again.added.length, 0, "must not duplicate an existing header");
+  assert.equal(again.skipped.length, 1);
+  assert.ok(again.text.includes("a.access"), "existing value must be preserved");
+
+  const appended = hermes.mergeHeaderLines("X-Keep: 1", ["Y-New: 2"]);
+  assert.equal(appended.text, "X-Keep: 1\nY-New: 2");
+  const caseInsensitive = hermes.mergeHeaderLines("cf-access-client-id: a", ["CF-Access-Client-Id: b"]);
+  assert.equal(caseInsensitive.added.length, 0, "header names compare case-insensitively");
+  assert.equal(hermes.mergeHeaderLines("", []).text, "");
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

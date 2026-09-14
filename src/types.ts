@@ -6,6 +6,9 @@
 
 export type FilenameStyle = "keep" | "title" | "kebab" | "snake";
 
+/** How Obsidian reaches the Hermes API server. */
+export type AccessMode = "local" | "lan" | "tailscale" | "cloudflare" | "ngrok" | "custom";
+
 export interface FrontmatterKeyInfo {
   key: string;
   count: number;
@@ -50,6 +53,8 @@ export interface ConnectionState {
 export interface HermesAgentNotesSettings {
   // --- Connection ---------------------------------------------------------
   baseUrl: string;
+  /** Which route this URL uses — drives the guided setup and its warnings. */
+  accessMode: AccessMode;
   /** Optional multi-profile prefix (`/p/<profile>`). Empty = default profile. */
   profile: string;
   apiKey: string;
@@ -87,6 +92,7 @@ export interface HermesAgentNotesSettings {
 
 export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   baseUrl: "http://127.0.0.1:8642",
+  accessMode: "local",
   profile: "",
   apiKey: "",
   extraHeaders: "",

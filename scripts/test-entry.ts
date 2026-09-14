@@ -1,5 +1,6 @@
 export * from "../src/types";
 export * from "../src/hermes-client";
+export * from "../src/remote";
 export * from "../src/prompts";
 export * from "../src/vault-rules";
 export * from "../src/note-writer";
