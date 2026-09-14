@@ -2,6 +2,7 @@ import { ItemView, MarkdownRenderer, Notice, Platform, WorkspaceLeaf } from "obs
 import type HermesAgentNotesPlugin from "../main";
 import { describeError } from "../hermes-client";
 import { trimHistory } from "../prompts";
+import { looksLikeNewNoteRequest } from "../intent";
 import { copyText } from "./clipboard";
 
 export const VIEW_TYPE_HERMES_CHAT = "hermes-agent-chat";
@@ -9,6 +10,8 @@ export const VIEW_TYPE_HERMES_CHAT = "hermes-agent-chat";
 interface ChatEntry {
   role: "user" | "assistant";
   content: string;
+  /** This answer came from a request for a new note. */
+  newNote?: boolean;
 }
 
 const EXAMPLES = [
@@ -171,33 +174,43 @@ export class HermesChatView extends ItemView {
       return;
     }
 
+    let prompt = "";
     for (const entry of this.entries) {
-      this.renderEntry(entry);
+      if (entry.role === "user") prompt = entry.content;
+      this.renderEntry(entry, prompt);
     }
     this.scrollToBottom();
   }
 
-  private renderEntry(entry: ChatEntry): void {
+  private renderEntry(entry: ChatEntry, prompt = ""): void {
     const wrapper = this.listEl.createDiv({ cls: "hermes-msg hermes-msg-" + entry.role });
     const bubble = wrapper.createDiv({ cls: "hermes-bubble" });
     if (entry.role === "assistant") {
       void MarkdownRenderer.render(this.app, entry.content, bubble, "", this);
-      this.addActions(wrapper, entry.content);
+      this.addActions(wrapper, entry.content, entry.newNote === true, prompt);
     } else {
       bubble.setText(entry.content);
     }
   }
 
-  private addActions(container: HTMLElement, text: string): void {
+  private addActions(container: HTMLElement, text: string, newNote: boolean, hint: string): void {
     const row = container.createDiv({ cls: "hermes-msg-actions" });
-    const add = (label: string, title: string, handler: () => void) => {
-      const button = row.createEl("button", { text: label, cls: "hermes-mini-btn" });
+    const add = (label: string, title: string, handler: () => void, primary = false) => {
+      const button = row.createEl("button", {
+        text: label,
+        cls: primary ? "hermes-mini-btn mod-cta" : "hermes-mini-btn",
+      });
       button.setAttr("title", title);
       button.addEventListener("click", handler);
     };
-    add("Insert", "Insert at the cursor in the active note", () => this.plugin.insertAtCursor(text));
-    add("Append", "Append to the active note", () => void this.plugin.appendToActiveNote(text));
-    add("Save as note", "Save this answer as a new note", () => void this.plugin.saveTextAsNote(text, "Hermes answer"));
+    if (newNote) {
+      // The request was for a new note: it must never land in the open one.
+      add("Create note", "Create this as a new note", () => void this.plugin.saveTextAsNote(text, hint), true);
+    } else {
+      add("Insert", "Insert at the cursor in the active note", () => this.plugin.insertAtCursor(text));
+      add("Append", "Append to the active note", () => void this.plugin.appendToActiveNote(text));
+      add("Save as note", "Save this answer as a new note", () => void this.plugin.saveTextAsNote(text, hint));
+    }
     add("Copy", "Copy to the clipboard", () => copyText(text));
   }
 
@@ -223,11 +236,15 @@ export class HermesChatView extends ItemView {
     this.busy = true;
     this.setBusy(true);
     this.pendingText = "";
+    const prompt = this.lastUserText();
+    const newNote = looksLikeNewNoteRequest(prompt);
     this.createPending();
+    if (newNote && this.pendingEl) this.pendingEl.setText("Drafting a new note…");
     try {
       const history = trimHistory(this.entries, this.plugin.settings.maxHistoryMessages);
       const answer = await this.plugin.runChat(history, {
-        includeNote: this.includeNote,
+        // runChat enforces this too; passing it here keeps the two in step.
+        includeNote: this.includeNote && !newNote,
         onDelta: (_delta, full) => {
           this.pendingText = full;
           this.schedulePendingRender();
@@ -236,7 +253,7 @@ export class HermesChatView extends ItemView {
           this.controller = controller;
         },
       });
-      this.entries.push({ role: "assistant", content: answer });
+      this.entries.push({ role: "assistant", content: answer, newNote });
     } catch (error) {
       const message = describeError(error);
       this.entries.push({ role: "assistant", content: "⚠️ " + message });
@@ -250,9 +267,20 @@ export class HermesChatView extends ItemView {
     }
   }
 
+  private lastUserText(): string {
+    for (let index = this.entries.length - 1; index >= 0; index--) {
+      if (this.entries[index].role === "user") return this.entries[index].content;
+    }
+    return "";
+  }
+
   private createPending(): void {
     this.listEl.empty();
-    for (const entry of this.entries) this.renderEntry(entry);
+    let prompt = "";
+    for (const entry of this.entries) {
+      if (entry.role === "user") prompt = entry.content;
+      this.renderEntry(entry, prompt);
+    }
     const wrapper = this.listEl.createDiv({ cls: "hermes-msg hermes-msg-assistant hermes-msg-pending" });
     this.pendingEl = wrapper.createDiv({ cls: "hermes-bubble", text: "Thinking…" });
     this.scrollToBottom();

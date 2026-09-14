@@ -13,7 +13,8 @@ import { HermesSettingTab } from "./settings";
 import { HermesChatView, VIEW_TYPE_HERMES_CHAT } from "./ui/chat-view";
 import { PromptModal } from "./ui/prompt-modal";
 import { PreviewModal } from "./ui/preview-modal";
-import { AnswerModal } from "./ui/answer-modal";
+import { AnswerModal, AnswerActions } from "./ui/answer-modal";
+import { looksLikeNewNoteRequest } from "./intent";
 import { ConventionsModal } from "./ui/conventions-modal";
 import {
   applyFilenameStyle,
@@ -596,7 +597,11 @@ export default class HermesAgentNotesPlugin extends Plugin {
     } = {}
   ): Promise<string> {
     const conversation: ChatMessage[] = history.map((entry) => ({ role: entry.role, content: entry.content }));
-    const context = await this.noteContext({ includeActive: options.includeNote !== false });
+    // "Create a new note about X" must not be answered out of the note that is
+    // open, otherwise the new note comes out as a continuation of the old one.
+    const lastUser = [...conversation].reverse().find((entry) => entry.role === "user");
+    const wantsNewNote = lastUser ? looksLikeNewNoteRequest(lastUser.content) : false;
+    const context = await this.noteContext({ includeActive: options.includeNote !== false && !wantsNewNote });
     for (let index = conversation.length - 1; index >= 0; index--) {
       if (conversation[index].role === "user") {
         conversation[index] = { role: "user", content: chatUserPrompt(conversation[index].content, context) };
@@ -845,13 +850,22 @@ export default class HermesAgentNotesPlugin extends Plugin {
     });
     if (!answer) return;
     try {
-      const context = await this.noteContext({ includeActive: true });
+      const wantsNewNote = looksLikeNewNoteRequest(answer.prompt);
+      const context = await this.noteContext({ includeActive: !wantsNewNote });
       const raw = await this.askOnce("answer", context, chatUserPrompt(answer.prompt, context));
-      new AnswerModal(this.app, "Hermes on " + file.basename, raw, {
-        insert: () => this.insertAtCursor(raw),
-        append: () => void this.appendToActiveNote(raw),
-        save: () => void this.saveTextAsNote(raw, answer.prompt),
-      }).open();
+      const actions: AnswerActions = wantsNewNote
+        ? { create: () => void this.saveTextAsNote(raw, answer.prompt) }
+        : {
+            insert: () => this.insertAtCursor(raw),
+            append: () => void this.appendToActiveNote(raw),
+            save: () => void this.saveTextAsNote(raw, answer.prompt),
+          };
+      new AnswerModal(
+        this.app,
+        wantsNewNote ? "New note from Hermes" : "Hermes on " + file.basename,
+        raw,
+        actions
+      ).open();
     } catch (error) {
       this.reportError(error);
     }
@@ -866,8 +880,14 @@ export default class HermesAgentNotesPlugin extends Plugin {
     });
     if (!answer) return;
     try {
-      const context = await this.noteContext({ includeActive: true });
+      const wantsNewNote = looksLikeNewNoteRequest(answer.prompt);
+      const context = await this.noteContext({ includeActive: !wantsNewNote });
       const raw = await this.askOnce("answer", context, chatUserPrompt(answer.prompt, context));
+      if (wantsNewNote) {
+        // A request for a new note is never inserted into the note that is open.
+        await this.saveTextAsNote(raw, answer.prompt);
+        return;
+      }
       const text = raw.trim();
       const cursor = editor.getCursor();
       const needsBreak = cursor.ch > 0;

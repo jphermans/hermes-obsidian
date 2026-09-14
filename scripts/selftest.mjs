@@ -600,6 +600,38 @@ test("stripCaveats never eats real note content", () => {
   assert.equal(hermes.stripCaveats("").text, "");
 });
 
+// --- new-note intent -------------------------------------------------------
+
+test("a request for a new note is recognised", () => {
+  const requests = [
+    "Create a new note about the supplier meeting",
+    "create a new note",
+    "Make a note titled Boiler service 2026",
+    "Write a note about lead times",
+    "create a file for the monthly checklist",
+    "Draft a note summarising the inspection",
+  ];
+  for (const text of requests) {
+    assert.equal(hermes.looksLikeNewNoteRequest(text), true, "not recognised: " + text);
+  }
+});
+
+test("questions and edits of the open note are not new-note requests", () => {
+  const others = [
+    "What links should this note have?",
+    "Summarise this note and rewrite it in our house style",
+    "Fix the Obsidian formatting of this note",
+    "Add the delivery dates to this note",
+    "How do I create notes in Obsidian?",
+    "Why is this note not in the graph?",
+    "Append this to the note",
+    "",
+  ];
+  for (const text of others) {
+    assert.equal(hermes.looksLikeNewNoteRequest(text), false, "wrongly recognised: " + text);
+  }
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

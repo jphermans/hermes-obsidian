@@ -5,6 +5,8 @@ export interface AnswerActions {
   insert?: () => void;
   append?: () => void;
   save?: () => void;
+  /** Shown instead of Insert/Append when the request was for a new note. */
+  create?: () => void;
 }
 
 /** Shows a Hermes answer as rendered Markdown with note actions. */
@@ -30,8 +32,18 @@ export class AnswerModal extends Modal {
     void MarkdownRenderer.render(this.app, this.markdown, body, "", this.renderComponent);
 
     const buttons = this.contentEl.createDiv({ cls: "hermes-notes-buttons" });
+    if (this.actions.create) {
+      const create = buttons.createEl("button", { text: "Create note", cls: "mod-cta" });
+      create.addEventListener("click", () => {
+        this.actions.create?.();
+        this.close();
+      });
+    }
     if (this.actions.insert) {
-      const insert = buttons.createEl("button", { text: "Insert at cursor", cls: "mod-cta" });
+      const insert = buttons.createEl("button", {
+        text: "Insert at cursor",
+        cls: this.actions.create ? "" : "mod-cta",
+      });
       insert.addEventListener("click", () => {
         this.actions.insert?.();
         this.close();

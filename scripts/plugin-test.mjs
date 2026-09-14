@@ -219,6 +219,21 @@ await test("with nothing open, append says so instead of writing anywhere", asyn
   assert.equal(written.length, 0, "a note was created for a request with no active note");
 });
 
+await test("a new-note request leaves the open note out of the request", async () => {
+  const plugin = await makePlugin();
+  app.setActiveFile("Kitchen renovation.md");
+
+  await plugin.runChat([{ role: "user", content: "What links should this note have?" }]);
+  const question = server.seen[server.seen.length - 1].body;
+  assert.ok(question.indexOf("the note open in Obsidian") >= 0, "a question should carry the open note");
+
+  await plugin.runChat([{ role: "user", content: "Create a new note about lead times" }]);
+  const create = server.seen[server.seen.length - 1].body;
+  assert.ok(create.indexOf("the note open in Obsidian") < 0, "the open note leaked into a new-note request: " + create.slice(0, 400));
+  assert.ok(create.indexOf("OBSIDIAN MARKDOWN RULES") >= 0, "the house rules must still be sent");
+  assert.ok(create.indexOf("VAULT CONVENTIONS") >= 0, "the vault conventions must still be sent");
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");
