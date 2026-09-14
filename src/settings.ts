@@ -47,6 +47,7 @@ export class HermesSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.addClass("hermes-settings");
 
+    this.renderVersionLabel(containerEl);
     this.renderConnection(containerEl);
     this.renderRemoteAccess(containerEl);
     this.renderPromptTest(containerEl);
@@ -54,6 +55,45 @@ export class HermesSettingTab extends PluginSettingTab {
     this.renderConventions(containerEl);
     this.renderSettingsFile(containerEl);
     this.renderGuide(containerEl);
+  }
+
+  // --- version label --------------------------------------------------------
+
+  /**
+   * Which build is installed, as a label at the top of the setup page — so a
+   * bug report never has to guess, and a stale BRAT update is obvious.
+   */
+  private renderVersionLabel(containerEl: HTMLElement): void {
+    const row = containerEl.createDiv({ cls: "hermes-version-row" });
+    row.createEl("span", { cls: "hermes-version-name", text: "Hermes Agent Notes" });
+
+    const version = "v" + this.plugin.manifest.version;
+    const badge = row.createEl("span", { cls: "hermes-version-badge", text: version });
+    badge.setAttr(
+      "title",
+      (Platform.isDesktop ? "Desktop" : "Mobile") +
+        " build · id " +
+        this.plugin.manifest.id +
+        " · click to copy"
+    );
+    badge.addEventListener("click", () => {
+      copyText(
+        "Hermes Agent Notes " + version + " (" + (Platform.isDesktop ? "desktop" : "mobile") + ")",
+        "Copied " + version
+      );
+    });
+
+    // The connection state, right next to the version — the two things a bug
+    // report always asks for.
+    const connection = this.plugin.settings.connection;
+    if (connection) {
+      const state = row.createEl("span", {
+        cls: "hermes-version-state",
+        text: connection.ok ? "connected" : "connection failed",
+      });
+      state.toggleClass("is-ok", !!connection.ok);
+      state.toggleClass("is-bad", !connection.ok);
+    }
   }
 
   // --- connection ----------------------------------------------------------
@@ -684,7 +724,6 @@ export class HermesSettingTab extends PluginSettingTab {
 
   private renderGuide(containerEl: HTMLElement): void {
     containerEl.createEl("h2", { text: "Setup guide" });
-
     const steps = containerEl.createDiv({ cls: "hermes-guide" });
     steps.createEl("p", {
       text:

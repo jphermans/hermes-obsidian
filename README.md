@@ -64,6 +64,8 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 
 ## Setup
 
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.19** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+
 ### 1. Enable the API server on the Hermes host
 
 ```bash

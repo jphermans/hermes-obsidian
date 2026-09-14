@@ -776,6 +776,49 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   padding: 2px 8px;
 }
 
+/* Version label at the top of the setup page. */
+.hermes-version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 14px 0;
+}
+
+.hermes-version-name {
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.hermes-version-badge {
+  padding: 2px 9px;
+  border: 1px solid var(--hermes-border);
+  border-radius: 999px;
+  background: var(--hermes-accent-soft);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.hermes-version-badge:hover {
+  border-color: var(--hermes-accent);
+}
+
+.hermes-version-state {
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-faint);
+}
+
+.hermes-version-state.is-ok {
+  color: var(--hermes-accent);
+}
+
+.hermes-version-state.is-bad {
+  color: var(--text-error);
+}
+
 /* Quick prompt chips above the chat input. */
 .hermes-chips {
   display: flex;
