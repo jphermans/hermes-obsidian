@@ -66,6 +66,9 @@ export class HermesChatView extends ItemView {
   private pendingFrame = 0;
   private suggest: SuggestDropdown | null = null;
   private mention: MentionContext | null = null;
+  /** Messages typed while an answer is running, sent one by one afterwards. */
+  private pendingMessages: string[] = [];
+  private queueEl: HTMLElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: HermesAgentNotesPlugin) {
     super(leaf);
@@ -176,8 +179,41 @@ export class HermesChatView extends ItemView {
     this.stopBtn = actions.createEl("button", { text: "Stop", cls: "hermes-stop is-hidden" });
     this.stopBtn.addEventListener("click", () => this.cancel());
 
+    this.queueEl = composer.createDiv({ cls: "hermes-queue is-hidden" });
+    this.register(this.plugin.queue.onChange(() => this.renderQueue()));
+
     this.renderEntries();
     this.renderStatus();
+    this.renderQueue();
+  }
+
+  /** What is running and what is waiting, message queue and plugin queue together. */
+  private renderQueue(): void {
+    const el = this.queueEl;
+    if (!el) return;
+    el.empty();
+    const waiting = this.pendingMessages.length;
+    const active = this.plugin.queue.activeLabel();
+    const commandWaiting = this.plugin.queue.waiting().length;
+    const visible = waiting > 0 || commandWaiting > 0 || active !== null;
+    el.toggleClass("is-hidden", !visible);
+    if (!visible) return;
+
+    const parts: string[] = [];
+    if (active) parts.push(active + " — running");
+    if (commandWaiting > 0) parts.push(commandWaiting + " queued");
+    if (waiting > 0) parts.push(waiting === 1 ? "1 message waiting" : waiting + " messages waiting");
+    el.createSpan({ cls: "hermes-queue-text", text: parts.join(" · ") });
+
+    if (waiting > 0) {
+      const cancel = el.createEl("button", { cls: "hermes-queue-cancel", text: "Cancel waiting" });
+      cancel.addEventListener("click", () => {
+        const dropped = this.pendingMessages.length;
+        this.pendingMessages = [];
+        this.renderQueue();
+        new Notice(dropped + " queued message" + (dropped === 1 ? "" : "s") + " dropped.");
+      });
+    }
   }
 
   private renderContext(): void {
@@ -300,15 +336,38 @@ export class HermesChatView extends ItemView {
   // --- running a turn ------------------------------------------------------
 
   private async send(): Promise<void> {
-    if (this.busy) return;
     const typed = this.inputEl.value.trim();
     if (!typed) {
       new Notice("Type a message first.");
       return;
     }
+    // Running: the message waits its turn instead of being lost.
+    if (this.busy) {
+      this.pendingMessages.push(typed);
+      this.inputEl.value = "";
+      this.suggest?.hide();
+      this.renderQueue();
+      new Notice(
+        "Queued behind " + (this.plugin.queue.activeLabel() || "the current answer") + " — it will be sent next.",
+        5000
+      );
+      return;
+    }
+    this.inputEl.value = "";
+    await this.submit(typed);
+  }
+
+  /** Sends the next message that was typed while something else was running. */
+  private drainQueue(): void {
+    if (this.busy || this.pendingMessages.length === 0) return;
+    const next = this.pendingMessages.shift();
+    this.renderQueue();
+    if (next) void this.submit(next);
+  }
+
+  private async submit(typed: string): Promise<void> {
     const command = runCommand(typed);
     if (command && command.kind === "action") {
-      this.inputEl.value = "";
       this.suggest?.hide();
       this.runAction(command.action);
       return;
@@ -319,7 +378,6 @@ export class HermesChatView extends ItemView {
     }
     // A command expands into a message; @[[…]] becomes a plain wikilink.
     const outgoing = command && command.kind === "message" ? command.text : stripMentionSyntax(typed);
-    this.inputEl.value = "";
     this.suggest?.hide();
     this.entries.push({ role: "user", content: typed });
     // "move the boiler note into Archive" is a file operation, not a question.
@@ -363,6 +421,9 @@ export class HermesChatView extends ItemView {
     this.createPending();
     if (newNote) this.setPendingLabel("Drafting a new note");
     let transport: TransportInfo | undefined;
+    if (this.plugin.queue.isBusy()) {
+      this.setPendingLabel("Waiting for " + (this.plugin.queue.activeLabel() || "another job"));
+    }
     try {
       const history = trimHistory(this.entries, this.plugin.settings.maxHistoryMessages);
       // The bubble is not always what goes out: a command has been expanded and
@@ -373,21 +434,24 @@ export class HermesChatView extends ItemView {
           break;
         }
       }
-      const answer = await this.plugin.runChat(history, {
-        // runChat enforces this too; passing it here keeps the two in step.
-        includeNote: this.includeNote && !newNote,
-        mentionTitles,
-        onTransport: (info) => {
-          transport = info;
-        },
-        onDelta: (_delta, full) => {
-          this.pendingText = full;
-          this.schedulePendingRender();
-        },
-        onController: (controller) => {
-          this.controller = controller;
-        },
-      });
+      // One job at a time: a note command launched meanwhile goes first.
+      const answer = await this.plugin.queued("Chat answer", () =>
+        this.plugin.runChat(history, {
+          // runChat enforces this too; passing it here keeps the two in step.
+          includeNote: this.includeNote && !newNote,
+          mentionTitles,
+          onTransport: (info) => {
+            transport = info;
+          },
+          onDelta: (_delta, full) => {
+            this.pendingText = full;
+            this.schedulePendingRender();
+          },
+          onController: (controller) => {
+            this.controller = controller;
+          },
+        })
+      );
       this.entries.push({ role: "assistant", content: answer, newNote, transport });
     } catch (error) {
       const message = describeError(error);
@@ -401,6 +465,8 @@ export class HermesChatView extends ItemView {
       this.busy = false;
       this.setBusy(false);
       this.renderEntries();
+      this.renderQueue();
+      this.drainQueue();
     }
   }
 

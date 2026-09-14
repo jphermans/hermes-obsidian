@@ -3,6 +3,7 @@ import { copyText } from "./clipboard";
 import { sanitizeFilename } from "../note-writer";
 import { validateNote } from "../validate";
 import type { NoteCheck } from "../validate";
+import { diffForDisplay, diffLines, summarizeDiff } from "../diff";
 import type { VaultConventions } from "../types";
 
 export interface PreviewModalOptions {
@@ -14,6 +15,8 @@ export interface PreviewModalOptions {
   conventions: VaultConventions | null;
   openAfter: boolean;
   note?: string;
+  /** The note as it is on disk: turns this into a review with a diff. */
+  before?: string;
 }
 
 export interface PreviewModalResult {
@@ -43,8 +46,14 @@ export class PreviewModal extends Modal {
   private checkEl!: HTMLElement;
   private bodyEl!: HTMLElement;
   private pathHint!: HTMLElement;
-  private rawMode = false;
+  private view: "changes" | "preview" | "raw" = "preview";
+  private tabs: { key: "changes" | "preview" | "raw"; button: HTMLButtonElement }[] = [];
   private renderComponent: Component | null = null;
+
+  /** A before/after review rather than a plain preview. */
+  private reviewing(): boolean {
+    return this.options.before !== undefined && this.options.mode === "overwrite";
+  }
 
   constructor(app: App, options: PreviewModalOptions) {
     super(app);
@@ -104,22 +113,21 @@ export class PreviewModal extends Modal {
     this.checkEl = checkRow;
 
     const tabRow = contentEl.createDiv({ cls: "hermes-notes-tabs" });
-    const previewTab = tabRow.createEl("button", { text: "Preview", cls: "hermes-tab is-active" });
-    const rawTab = tabRow.createEl("button", { text: "Markdown", cls: "hermes-tab" });
+    const addTab = (key: "changes" | "preview" | "raw", label: string) => {
+      const button = tabRow.createEl("button", { text: label, cls: "hermes-tab" });
+      button.addEventListener("click", () => {
+        this.view = key;
+        this.updateTabs();
+        this.renderBody();
+      });
+      this.tabs.push({ key, button });
+    };
+    if (this.reviewing()) addTab("changes", "Changes");
+    addTab("preview", "Preview");
+    addTab("raw", "Markdown");
+    this.view = this.reviewing() ? "changes" : "preview";
+    this.updateTabs();
     this.bodyEl = contentEl.createDiv({ cls: "hermes-notes-body" });
-
-    previewTab.addEventListener("click", () => {
-      this.rawMode = false;
-      previewTab.addClass("is-active");
-      rawTab.removeClass("is-active");
-      this.renderBody();
-    });
-    rawTab.addEventListener("click", () => {
-      this.rawMode = true;
-      rawTab.addClass("is-active");
-      previewTab.removeClass("is-active");
-      this.renderBody();
-    });
 
     if (this.options.mode !== "append") {
       new Setting(contentEl)
@@ -132,17 +140,38 @@ export class PreviewModal extends Modal {
     }
 
     const buttons = contentEl.createDiv({ cls: "hermes-notes-buttons" });
+    const reviewing = this.reviewing();
     const primary = buttons.createEl("button", {
-      text: this.options.mode === "create" ? "Create note" : this.options.mode === "append" ? "Append" : "Replace note",
+      text: reviewing
+        ? "Approve & save"
+        : this.options.mode === "create"
+          ? "Create note"
+          : this.options.mode === "append"
+            ? "Append"
+            : "Replace note",
       cls: "mod-cta",
     });
     primary.addEventListener("click", () => this.submit());
+    if (reviewing) {
+      const reject = buttons.createEl("button", { text: "Reject" });
+      reject.addEventListener("click", () => this.close());
+    }
     const copy = buttons.createEl("button", { text: "Copy Markdown" });
     copy.addEventListener("click", () => {
       this.copyMarkdown();
     });
-    const cancel = buttons.createEl("button", { text: "Cancel" });
-    cancel.addEventListener("click", () => this.close());
+    if (!reviewing) {
+      const cancel = buttons.createEl("button", { text: "Cancel" });
+      cancel.addEventListener("click", () => this.close());
+    }
+
+    // Approve without reaching for the mouse.
+    contentEl.addEventListener("keydown", (event: KeyboardEvent) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        this.submit();
+      }
+    });
 
     this.renderBody();
     this.updatePathHint();
@@ -191,11 +220,24 @@ export class PreviewModal extends Modal {
     }
   }
 
+  private updateTabs(): void {
+    for (const tab of this.tabs) {
+      tab.button.toggleClass("is-active", tab.key === this.view);
+    }
+  }
+
   private renderBody(): void {
     const scroll = this.bodyEl.scrollTop;
     this.bodyEl.empty();
-    this.bodyEl.toggleClass("is-raw", this.rawMode);
-    if (this.rawMode) {
+    this.bodyEl.toggleClass("is-raw", this.view === "raw");
+
+    if (this.view === "changes") {
+      this.renderChanges();
+      this.bodyEl.scrollTop = 0;
+      return;
+    }
+
+    if (this.view === "raw") {
       const textarea = this.bodyEl.createEl("textarea", { cls: "hermes-notes-raw" });
       textarea.value = this.content;
       textarea.rows = 18;
@@ -213,6 +255,27 @@ export class PreviewModal extends Modal {
     this.renderComponent.load();
     void MarkdownRenderer.render(this.app, this.content, target, "", this.renderComponent);
     this.bodyEl.scrollTop = scroll;
+  }
+
+  /** The note as it is, as it would be, and what changed in between. */
+  private renderChanges(): void {
+    const before = this.options.before || "";
+    const diff = diffLines(before, this.content);
+    this.bodyEl.createDiv({ cls: "hermes-diff-summary", text: summarizeDiff(diff) });
+    if (diff.coarse) return;
+    if (diff.added === 0 && diff.removed === 0) {
+      this.bodyEl.createDiv({ cls: "hermes-diff-empty", text: "This is exactly what is already on disk." });
+      return;
+    }
+    const block = this.bodyEl.createDiv({ cls: "hermes-diff" });
+    for (const line of diffForDisplay(diff)) {
+      const row = block.createDiv({ cls: "hermes-diff-line is-" + line.type });
+      row.createEl("span", {
+        cls: "hermes-diff-sign",
+        text: line.type === "add" ? "+" : line.type === "remove" ? "−" : " ",
+      });
+      row.createEl("span", { cls: "hermes-diff-text", text: line.text.length > 0 ? line.text : " " });
+    }
   }
 
   private copyMarkdown(): void {

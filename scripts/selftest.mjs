@@ -1081,6 +1081,159 @@ test("the summary counts only what will really happen", () => {
   assert.ok(summary.indexOf("1 skipped") >= 0, summary);
 });
 
+// --- line diff (the review window) ------------------------------------------
+
+test("an unchanged note has no diff", () => {
+  const same = hermes.diffLines("# A\n\nbody\n", "# A\n\nbody\n");
+  assert.equal(same.added, 0);
+  assert.equal(same.removed, 0);
+  assert.equal(same.coarse, false);
+  assert.equal(hermes.summarizeDiff(same), "No changes.");
+  assert.equal(hermes.contentChanged("a", "a"), false);
+  assert.equal(hermes.contentChanged("a", "b"), true);
+});
+
+test("changed, added and removed lines are counted", () => {
+  const before = "# Kitchen renovation\n\nBudget is tight.\nStatus: draft\n";
+  const after = "# Kitchen renovation\n\nBudget is tight for now.\nStatus: approved\nExtra: yes\n";
+  const diff = hermes.diffLines(before, after);
+  assert.equal(diff.coarse, false);
+  assert.equal(diff.removed, 2, "the two replaced lines count as removed");
+  assert.equal(diff.added, 3, "the two replacements plus the new line");
+  assert.equal(hermes.summarizeDiff(diff), "3 lines added, 2 lines removed");
+  const same = diff.lines.filter((line) => line.type === "same").map((line) => line.text);
+  assert.deepEqual(same, ["# Kitchen renovation", ""], "untouched lines are preserved in order");
+});
+
+test("a one-line edit in a long note stays cheap and precise", () => {
+  const lines = [];
+  for (let index = 0; index < 400; index++) lines.push("line " + index);
+  const before = lines.join("\n");
+  const after = lines.slice().map((line, index) => (index === 200 ? "line 200 changed" : line)).join("\n");
+  const diff = hermes.diffLines(before, after);
+  assert.equal(diff.coarse, false, "common top and bottom are trimmed before aligning");
+  assert.equal(diff.added, 1);
+  assert.equal(diff.removed, 1);
+  assert.equal(diff.lines.length, 401, "every line is still represented");
+  assert.equal(diff.lines.filter((line) => line.type === "same").length, 399);
+});
+
+test("the displayed diff keeps context and collapses the rest", () => {
+  const lines = [];
+  for (let index = 0; index < 30; index++) lines.push("line " + index);
+  const before = lines.join("\n");
+  const after = lines.slice().map((line, index) => (index === 15 ? "line 15 changed" : line)).join("\n");
+  const shown = hermes.diffForDisplay(hermes.diffLines(before, after), 2);
+  assert.ok(shown.length < 12, "only the change and its context are shown: " + shown.length);
+  assert.ok(shown.some((line) => line.type === "remove"), "the old line is shown");
+  assert.ok(shown.some((line) => line.type === "add"), "the new line is shown");
+  assert.equal(shown.filter((line) => line.text === "…").length, 2, "the two skipped regions are marked");
+  const only = shown.filter((line) => line.type !== "same");
+  assert.equal(only.length, 2, JSON.stringify(shown));
+});
+
+test("an enormous change is declared coarse instead of pretending", () => {
+  const before = [];
+  const after = [];
+  for (let index = 0; index < 1300; index++) {
+    before.push("old " + index);
+    after.push("new " + index);
+  }
+  const diff = hermes.diffLines(before.join("\n"), after.join("\n"));
+  assert.equal(diff.coarse, true);
+  assert.deepEqual(diff.lines, []);
+  assert.ok(hermes.summarizeDiff(diff).indexOf("too large") >= 0, hermes.summarizeDiff(diff));
+  assert.deepEqual(hermes.diffForDisplay(diff), [], "a coarse diff displays nothing");
+});
+
+// --- the queue --------------------------------------------------------------
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("queued work runs one job at a time, in order", async () => {
+  const queue = new hermes.SerialQueue();
+  const log = [];
+  const first = queue.run("first", async () => {
+    log.push("first:start");
+    await wait(30);
+    log.push("first:end");
+    return 1;
+  });
+  const second = queue.run("second", async () => {
+    log.push("second:start");
+    await wait(10);
+    log.push("second:end");
+    return 2;
+  });
+  const third = queue.run("third", async () => {
+    log.push("third:start");
+    log.push("third:end");
+    return 3;
+  });
+
+  assert.equal(queue.isBusy(), true, "the first job starts immediately");
+  assert.equal(queue.activeLabel(), "first");
+  assert.deepEqual(queue.waiting().map((entry) => entry.label), ["second", "third"]);
+
+  assert.deepEqual(await Promise.all([first, second, third]), [1, 2, 3]);
+  assert.deepEqual(
+    log,
+    ["first:start", "first:end", "second:start", "second:end", "third:start", "third:end"],
+    "no interleaving: " + log.join(", ")
+  );
+  assert.equal(queue.isBusy(), false);
+  assert.deepEqual(queue.waiting(), []);
+});
+
+test("a failing job does not strand the ones behind it", async () => {
+  const queue = new hermes.SerialQueue();
+  const results = [];
+  const failing = queue.run("bad", async () => {
+    throw new Error("boom");
+  });
+  const following = queue.run("good", async () => "fine");
+  results.push(await failing.then(() => "resolved", (error) => "rejected: " + error.message));
+  results.push(await following);
+  assert.deepEqual(results, ["rejected: boom", "fine"]);
+  assert.equal(queue.isBusy(), false, "the queue drained despite the failure");
+});
+
+test("a job that has not started can be cancelled, and the queue is told about it", async () => {
+  const queue = new hermes.SerialQueue();
+  let changes = 0;
+  const unsubscribe = queue.onChange(() => {
+    changes++;
+  });
+  const running = queue.run("running", async () => {
+    await wait(20);
+    return "done";
+  });
+  const waiting = queue.run("waiting", async () => "never");
+  const id = queue.waiting()[0].id;
+  assert.equal(queue.cancel(id), true, "the waiting job is cancelled");
+  assert.equal(queue.cancel("job-does-not-exist"), false);
+  assert.deepEqual(queue.waiting(), []);
+  assert.ok(changes > 0, "listeners were notified");
+  await assert.rejects(() => waiting, (error) => error.message.indexOf("Cancelled") >= 0);
+  assert.equal(await running, "done", "the running job is never interrupted");
+  unsubscribe();
+  assert.equal(queue.cancelWaiting(), 0);
+});
+
+test("everything waiting can be dropped at once", async () => {
+  const queue = new hermes.SerialQueue();
+  const running = queue.run("running", async () => {
+    await wait(15);
+    return "kept";
+  });
+  const a = queue.run("a", async () => "a");
+  const b = queue.run("b", async () => "b");
+  assert.equal(queue.cancelWaiting(), 2);
+  await assert.rejects(() => a);
+  await assert.rejects(() => b);
+  assert.equal(await running, "kept");
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

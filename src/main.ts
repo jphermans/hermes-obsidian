@@ -15,6 +15,8 @@ import { PromptModal } from "./ui/prompt-modal";
 import { PreviewModal } from "./ui/preview-modal";
 import { AnswerModal, AnswerActions } from "./ui/answer-modal";
 import { looksLikeNewNoteRequest } from "./intent";
+import { SerialQueue } from "./queue";
+import { contentChanged } from "./diff";
 import {
   applyableOps,
   looksLikeFileOpRequest,
@@ -93,6 +95,8 @@ const EXAMPLES = [
 
 export default class HermesAgentNotesPlugin extends Plugin {
   settings!: HermesAgentNotesSettings;
+  /** One job at a time: a command launched during another one waits its turn. */
+  readonly queue = new SerialQueue();
   private sessionId = "";
   private scanPromise: Promise<VaultConventions | null> | null = null;
   private errorLogInstance: ErrorLog | null = null;
@@ -137,27 +141,28 @@ export default class HermesAgentNotesPlugin extends Plugin {
     this.addCommand({
       id: "create-note",
       name: "Create a note from a prompt",
-      callback: () => void this.createNoteInteractive(),
+      callback: () => void this.queued("Create note", () => this.createNoteInteractive()),
     });
 
     this.addCommand({
       id: "improve-note",
       name: "Improve the active note",
       checkCallback: (checking) =>
-        this.withActiveNote(checking, () => void this.rewriteActiveNote("")),
+        this.withActiveNote(checking, () => void this.queued("Improve note", () => this.rewriteActiveNote(""))),
     });
 
     this.addCommand({
       id: "rewrite-note",
       name: "Rewrite the active note with an instruction",
       checkCallback: (checking) =>
-        this.withActiveNote(checking, () => void this.rewriteActiveNote(null)),
+        this.withActiveNote(checking, () => void this.queued("Rewrite note", () => this.rewriteActiveNote(null))),
     });
 
     this.addCommand({
       id: "fix-note",
       name: "Fix the active note for Obsidian",
-      checkCallback: (checking) => this.withActiveNote(checking, () => void this.fixActiveNote()),
+      checkCallback: (checking) =>
+        this.withActiveNote(checking, () => void this.queued("Fix note", () => this.fixActiveNote())),
     });
 
     this.addCommand({
@@ -169,7 +174,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
     this.addCommand({
       id: "insert-answer",
       name: "Insert a Hermes answer at the cursor",
-      editorCallback: (editor: Editor) => void this.insertAnswerInteractive(editor),
+      editorCallback: (editor: Editor) => void this.queued("Insert answer", () => this.insertAnswerInteractive(editor)),
     });
 
     this.addCommand({
@@ -177,7 +182,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
       name: "Turn the selection into a note",
       editorCheckCallback: (checking, editor: Editor) => {
         if (editor.getSelection().trim().length === 0) return false;
-        if (!checking) void this.selectionToNote(editor);
+        if (!checking) void this.queued("Note from selection", () => this.selectionToNote(editor));
         return true;
       },
     });
@@ -185,7 +190,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
     this.addCommand({
       id: "file-operations",
       name: "Copy, move or delete notes",
-      callback: () => void this.fileOpsInteractive(),
+      callback: () => void this.queued("File operations", () => this.fileOpsInteractive()),
     });
 
     this.addCommand({
@@ -437,6 +442,23 @@ export default class HermesAgentNotesPlugin extends Plugin {
     };
     await this.saveSettings();
     return { text, ms, model, streamed };
+  }
+
+  /**
+   * Runs a job on the plugin queue. If something is already running, the user is
+   * told it is waiting — a second command never collides with the first.
+   */
+  async queued<T>(label: string, task: () => Promise<T>): Promise<T> {
+    const waiting = this.queue.isBusy();
+    const active = this.queue.activeLabel();
+    const queued = this.queue.waiting().length;
+    if (waiting) {
+      new Notice(
+        "Queued behind " + (active || "another job") + (queued > 0 ? " (" + (queued + 1) + " waiting)" : "") + ".",
+        5000
+      );
+    }
+    return this.queue.run(label, task);
   }
 
   private refreshStatusBar(): void {
@@ -1022,15 +1044,32 @@ export default class HermesAgentNotesPlugin extends Plugin {
       mode,
       conventions: await this.getConventions(),
       openAfter: mode === "create" ? this.settings.openAfterCreate : false,
+      before: existingContent !== null ? existingContent : undefined,
       note:
         mode === "create"
           ? "Check the note, its file name and the Obsidian checks, then create it. Nothing is written until you press Create note."
-          : "The open note is replaced only when you press Replace note. Existing properties are kept.",
+          : "The changes are listed line by line. The file is replaced only when you press Approve & save; existing properties are kept.",
     });
-    if (!result) return;
+    if (!result) {
+      if (existingContent !== null) new Notice("Rejected — the note was left untouched.");
+      return;
+    }
 
     try {
       const renamed = existingPath !== null && result.path !== existingPath;
+      // The note may have been edited elsewhere while the review window was open.
+      if (mode === "overwrite" && !renamed && existingContent !== null) {
+        const target = this.app.vault.getAbstractFileByPath(result.path);
+        const current = target instanceof TFile ? await this.app.vault.read(target) : null;
+        if (current !== null && contentChanged(current, existingContent)) {
+          new Notice(
+            "Nothing was written: the note changed while you were reviewing it. Run the command again to see the current version.",
+            12000
+          );
+          await this.logError("Stale approval", "the note changed between review and save", result.path);
+          return;
+        }
+      }
       const written = await writeNote(
         this.app,
         result.path,

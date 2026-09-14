@@ -471,6 +471,40 @@ await test("a refused operation changes nothing", async () => {
   assert.equal(fileApp.fileOps.renamed.length, 1, "no extra rename may happen");
 });
 
+await test("a second command waits for the first, in order", async () => {
+  const plugin = await makePlugin();
+  const order = [];
+  const first = plugin.queued("First", async () => {
+    order.push("first:start");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    order.push("first:end");
+  });
+  const second = plugin.queued("Second", async () => {
+    order.push("second:start");
+    order.push("second:end");
+  });
+
+  assert.equal(plugin.queue.isBusy(), true, "the first job runs straight away");
+  assert.deepEqual(plugin.queue.waiting().map((entry) => entry.label), ["Second"], "the second one waits");
+
+  await Promise.all([first, second]);
+  assert.deepEqual(order, ["first:start", "first:end", "second:start", "second:end"]);
+  assert.equal(plugin.queue.isBusy(), false, "the queue is empty again");
+});
+
+await test("a queued chat turn still gets its answer, after the command", async () => {
+  const plugin = await makePlugin();
+  let finished = false;
+  const blocker = plugin.queued("Slow command", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    finished = true;
+  });
+  const answer = await plugin.queued("Chat answer", () => plugin.runChat([{ role: "user", content: "hi" }]));
+  assert.equal(finished, true, "the command must finish before the chat turn starts");
+  assert.ok(answer.indexOf("Kitchen renovation") >= 0, "the answer still arrives: " + answer);
+  await blocker;
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");

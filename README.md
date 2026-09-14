@@ -172,7 +172,7 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 | **Copy, move or delete notes** | Ask for a file operation — the plan is shown for approval, deletes go to the trash by default. |
 | **Open the chat panel** | Sidebar conversation with history, streaming and note actions. While Hermes works, an animated indicator pulses in the pending bubble instead of the word "Thinking…". |
 | **Create a note from a prompt** | Writes a complete new note — properties, headings, wikilinks, tags — for you to confirm. |
-| **Improve the active note** | Rewrites the open note, keeping every existing property, link and fact. |
+| **Improve the active note** | Rewrites the open note, keeping every existing property, link and fact — shown as a diff to approve or reject. |
 | **Rewrite the active note with an instruction** | "shorter", "add a decisions table", "split this into a project note". |
 | **Fix the active note for Obsidian** | Repairs Obsidian syntax only — broken wikilinks, illegal characters, malformed frontmatter, heading jumps, curly quotes — without touching your prose. |
 | **Ask Hermes about the active note** | Vault-aware answers with *Insert at cursor* / *Append* / *Save as note*. |
@@ -206,6 +206,25 @@ Type **`/`** for commands, which either expand into a message (handled by the no
 | `/help` | Lists these commands in the chat |
 
 Nothing in the command list can write to your vault on its own — a command produces an answer, and the answer still goes through the usual Create / Insert / Append confirmation.
+
+### Reviewing an edit: approve or reject
+
+**Improve the active note**, **Rewrite the active note with an instruction** and **Fix the active note for Obsidian** load the note into a review window instead of writing anything. The window opens on a **Changes** tab: the note as it is on disk against the version Hermes proposes, line by line, with additions and removals marked, and a summary (*"12 lines added, 4 lines removed"*) at the top. A **Preview** tab renders the result, and **Markdown** lets you correct it by hand before saving.
+
+Then it is a straight yes or no: **Approve & save** writes the note (⌘/Ctrl+Enter does the same), **Reject** leaves the file exactly as it was — you get a *"Rejected — the note was left untouched"* confirmation rather than silence. Existing properties are still merged, so nothing in your frontmatter is dropped.
+
+If the note is edited elsewhere while the review window is open, approval refuses to write and says so, instead of overwriting changes you have not seen. Notes that are too large to compare line by line say so and show the result instead of a fake diff.
+
+### One job at a time
+
+Everything that talks to Hermes goes through a queue, so a second command never collides with the first:
+
+* pick another command while one is running and it is queued — *"Queued behind Improve note"* — and runs when the first finishes;
+* type in the chat panel while an answer is streaming and the message is queued, then sent automatically; **Cancel waiting** in the composer drops the ones you changed your mind about;
+* the line under the composer shows what is running, how many commands are queued, and how many of your messages are waiting;
+* while a turn is waiting its turn, the pending bubble says *"Waiting for …"* instead of pretending to think.
+
+A job that fails does not strand the queue — the ones behind it still run.
 
 ## Following Obsidian's rules
 

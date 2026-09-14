@@ -698,6 +698,84 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   cursor: pointer;
 }
 
+/* Diff view in the review window. */
+.hermes-diff-summary {
+  margin: 0 0 8px;
+  font-size: var(--font-ui-small);
+  color: var(--hermes-muted);
+}
+
+.hermes-diff-empty {
+  font-size: var(--font-ui-small);
+  color: var(--hermes-ok);
+}
+
+.hermes-diff {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  border: 1px solid var(--hermes-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.hermes-diff-line {
+  display: flex;
+  gap: 8px;
+  padding: 1px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hermes-diff-line.is-add {
+  background: color-mix(in srgb, var(--hermes-ok) 14%, transparent);
+  color: var(--text-normal);
+}
+
+.hermes-diff-line.is-remove {
+  background: color-mix(in srgb, var(--hermes-bad) 14%, transparent);
+  color: var(--text-normal);
+}
+
+.hermes-diff-line.is-same {
+  color: var(--hermes-faint);
+}
+
+.hermes-diff-sign {
+  flex: 0 0 10px;
+  color: var(--hermes-muted);
+}
+
+.hermes-diff-text {
+  flex: 1 1 auto;
+}
+
+/* Queue line under the chat composer. */
+.hermes-queue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-muted);
+}
+
+.hermes-queue.is-hidden {
+  display: none;
+}
+
+.hermes-queue-text {
+  flex: 1 1 auto;
+}
+
+.hermes-queue-cancel {
+  flex: 0 0 auto;
+  font-size: var(--font-ui-smaller);
+  padding: 2px 8px;
+}
+
 .hermes-msg .hermes-bubble > :first-child {
   margin-top: 0;
 }

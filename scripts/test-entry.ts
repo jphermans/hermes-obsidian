@@ -5,6 +5,8 @@ export * from "../src/caveats";
 export * from "../src/remote";
 export * from "../src/intent";
 export * from "../src/file-ops";
+export * from "../src/queue";
+export * from "../src/diff";
 export * from "../src/mentions";
 export * from "../src/slash";
 export * from "../src/error-log";
