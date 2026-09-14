@@ -819,6 +819,47 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   color: var(--text-error);
 }
 
+/* Link to the published setup guide. */
+.hermes-version-guide {
+  margin-left: auto;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.hermes-version-guide:hover {
+  text-decoration: underline;
+}
+
+.hermes-guide-web {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 12px 0 4px 0;
+  padding: 11px 13px;
+  border: 1px solid var(--hermes-border);
+  border-left: 3px solid var(--hermes-accent);
+  border-radius: 8px;
+  background: var(--hermes-surface-quiet);
+}
+
+.hermes-guide-link {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.hermes-guide-link:hover {
+  text-decoration: underline;
+}
+
+.hermes-guide-web-url {
+  font-size: var(--font-ui-smaller);
+  color: var(--hermes-faint);
+  line-height: 1.45;
+}
+
 /* Quick prompt chips above the chat input. */
 .hermes-chips {
   display: flex;

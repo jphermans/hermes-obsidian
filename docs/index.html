@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermes Agent Notes — complete setup guide</title>
+<meta name="description" content="Every way to connect the Hermes Agent Notes Obsidian plugin to a Hermes instance: same machine, LAN, Tailscale, Cloudflare Tunnel, ngrok, a TLS reverse proxy, a dedicated profile, or Hermes on the phone itself.">
+<style>
+  :root {
+    --bg: #EBF0F7;
+    --surface: #F6F9FC;
+    --surface-quiet: rgba(17, 23, 31, 0.035);
+    --border: rgba(51, 64, 90, 0.18);
+    --text: #1B2430;
+    --muted: #4B5A70;
+    --faint: #6C7C92;
+    --accent: #6D5AE6;
+    --accent-2: #17A8B8;
+    --accent-soft: rgba(109, 90, 230, 0.12);
+    --ok: #1F8A57;
+    --warn: #B4720C;
+    --err: #C0392B;
+    --code-bg: rgba(17, 23, 31, 0.055);
+    --shadow: 0 1px 2px rgba(17, 23, 31, 0.06), 0 8px 24px rgba(17, 23, 31, 0.05);
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11171F;
+      --surface: #161E28;
+      --surface-quiet: rgba(255, 255, 255, 0.04);
+      --border: rgba(255, 255, 255, 0.11);
+      --text: #E4EAF2;
+      --muted: #A8B4C4;
+      --faint: #8492A4;
+      --accent: #9C8BF5;
+      --accent-2: #4BD0DC;
+      --accent-soft: rgba(156, 139, 245, 0.16);
+      --ok: #57C58C;
+      --warn: #E0A94A;
+      --err: #E5766A;
+      --code-bg: rgba(255, 255, 255, 0.055);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.28);
+    }
+  }
+  html.theme-light { --bg:#EBF0F7; --surface:#F6F9FC; --surface-quiet:rgba(17,23,31,0.035); --border:rgba(51,64,90,0.18); --text:#1B2430; --muted:#4B5A70; --faint:#6C7C92; --accent:#6D5AE6; --accent-2:#17A8B8; --accent-soft:rgba(109,90,230,0.12); --ok:#1F8A57; --warn:#B4720C; --err:#C0392B; --code-bg:rgba(17,23,31,0.055); --shadow:0 1px 2px rgba(17,23,31,0.06), 0 8px 24px rgba(17,23,31,0.05); }
+  html.theme-dark { --bg:#11171F; --surface:#161E28; --surface-quiet:rgba(255,255,255,0.04); --border:rgba(255,255,255,0.11); --text:#E4EAF2; --muted:#A8B4C4; --faint:#8492A4; --accent:#9C8BF5; --accent-2:#4BD0DC; --accent-soft:rgba(156,139,245,0.16); --ok:#57C58C; --warn:#E0A94A; --err:#E5766A; --code-bg:rgba(255,255,255,0.055); --shadow:0 1px 2px rgba(0,0,0,0.4), 0 10px 30px rgba(0,0,0,0.28); }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, kbd { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; }
+
+  header.top {
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .top-inner {
+    max-width: 1180px; margin: 0 auto; padding: 14px 22px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: baseline; gap: 9px; font-weight: 650; letter-spacing: -0.01em; }
+  .brand .badge {
+    font: 500 12px/1 ui-monospace, monospace; padding: 4px 9px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--accent-soft); color: var(--text);
+  }
+  .brand small { color: var(--faint); font-weight: 450; font-size: 13px; }
+  .top-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  button.ghost {
+    font: inherit; font-size: 13px; color: var(--muted); cursor: pointer;
+    background: var(--surface-quiet); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 11px; min-height: 34px;
+  }
+  button.ghost:hover { color: var(--text); border-color: var(--accent); }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 26px 22px 90px; display: grid; grid-template-columns: 250px 1fr; gap: 34px; align-items: start; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; gap: 20px; } nav.toc { position: static !important; max-height: none !important; } }
+
+  nav.toc {
+    position: sticky; top: 74px; align-self: start;
+    max-height: calc(100vh - 100px); overflow-y: auto;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); padding: 14px 12px; box-shadow: var(--shadow);
+  }
+  nav.toc h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.10em; color: var(--faint); margin: 0 0 10px 6px; }
+  nav.toc a { display: block; color: var(--muted); font-size: 13.5px; padding: 5px 8px; border-radius: 7px; }
+  nav.toc a:hover { background: var(--surface-quiet); color: var(--text); text-decoration: none; }
+  nav.toc a.sub { padding-left: 20px; font-size: 12.8px; color: var(--faint); }
+  nav.toc hr { border: 0; border-top: 1px solid var(--border); margin: 10px 4px; }
+
+  main { min-width: 0; }
+  h1 { font-size: 30px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 10px; }
+  h2 { font-size: 22px; letter-spacing: -0.015em; margin: 40px 0 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h2:first-of-type { border-top: 0; margin-top: 18px; }
+  h3 { font-size: 17px; margin: 26px 0 8px; }
+  h4 { font-size: 15px; margin: 18px 0 6px; color: var(--muted); }
+  p, li { color: var(--text); }
+  .lede { color: var(--muted); font-size: 17px; margin: 0 0 6px; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 5px 0; }
+  li > ul { margin-top: 5px; }
+  strong { font-weight: 640; }
+
+  .card {
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+    padding: 18px 20px; margin: 16px 0; box-shadow: var(--shadow);
+  }
+  .card h3, .card h4 { margin-top: 0; }
+  .card.note { border-left: 3px solid var(--accent); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card.bad { border-left: 3px solid var(--err); }
+  .card.ok { border-left: 3px solid var(--ok); }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14.5px; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--faint); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+  tr:last-child td { border-bottom: 0; }
+
+  pre {
+    position: relative; background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 9px; padding: 14px 52px 14px 14px; overflow-x: auto;
+    font-size: 13.2px; line-height: 1.6; margin: 12px 0;
+  }
+  pre code { white-space: pre; }
+  .copy {
+    position: absolute; top: 8px; right: 8px; font: 500 11.5px/1 -apple-system, system-ui, sans-serif;
+    color: var(--muted); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; padding: 6px 9px; cursor: pointer; opacity: 0.85;
+  }
+  .copy:hover { color: var(--text); border-color: var(--accent); opacity: 1; }
+  code:not(pre code) {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 1.5px 6px; font-size: 13px;
+  }
+  kbd { background: var(--surface-quiet); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; font-size: 12.5px; }
+
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-quiet); color: var(--muted); }
+  .pill.good { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .pill.bad { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, transparent); }
+  .pill.accent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .field { font-size: 13.5px; color: var(--muted); }
+  .field b { color: var(--text); font-weight: 600; }
+  footer { max-width: 1180px; margin: 0 auto; padding: 0 22px 70px; color: var(--faint); font-size: 13.5px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.23</span> <small>complete setup guide</small></span>
+    <span class="top-actions">
+      <a class="ghost" style="padding:7px 11px;border:1px solid var(--border);border-radius:8px" href="https://github.com/jphermans/hermes-obsidian">Repository</a>
+      <button class="ghost" id="theme">Theme</button>
+    </span>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc">
+    <h2>Contents</h2>
+    <a href="#start">Quick start</a>
+    <a href="#choose">Choose your instance</a>
+    <a href="#host">1 · Enable the API server</a>
+    <a href="#same">2 · Same machine</a>
+    <a href="#lan">3 · LAN (one network)</a>
+    <a href="#tailscale">4 · Tailscale</a>
+    <a href="#cloudflare">5 · Cloudflare Tunnel</a>
+    <a href="#ngrok">6 · ngrok</a>
+    <a href="#proxy">7 · VPS / TLS proxy</a>
+    <a href="#profile">8 · Its own profile</a>
+    <a href="#phone">9 · Hermes on the phone</a>
+    <a href="#stream">10 · Streaming</a>
+    <a href="#alive">11 · Keep it reachable</a>
+    <a href="#verify">Verify checklist</a>
+    <a href="#trouble">Troubleshooting</a>
+    <a href="#security">Security</a>
+    <a href="#privacy">Privacy &amp; backups</a>
+    <hr>
+    <a class="sub" href="#field">What goes in each field</a>
+    <a class="sub" href="#mobile">Mobile specifics</a>
+  </nav>
+
+  <main>
+    <h1>Hermes Agent Notes — setup for every instance</h1>
+    <p class="lede">One page for every way to reach a Hermes instance: the same machine, your own network, Tailscale, Cloudflare Tunnel, ngrok, a TLS proxy, a dedicated profile, or Hermes running on the phone itself. Pick your row in the table, follow that section, then run the <a href="#verify">verify checklist</a>.</p>
+
+    <div class="card note">
+      <h3>The plugin does all the file work</h3>
+      <p style="margin:0">Hermes never needs access to your vault. The plugin sends the request and the notes context, receives Markdown, and writes the file itself — through Obsidian's own APIs, with your approval. Nothing in this guide gives Hermes a path into your vault.</p>
+    </div>
+
+    <h2 id="start">Quick start</h2>
+    <ol>
+      <li><b>Enable the API server</b> on the machine that runs Hermes (<a href="#host">section 1</a>).</li>
+      <li><b>Make it reachable</b> from the device running Obsidian (<a href="#choose">pick your row</a>).</li>
+      <li><b>Install the plugin with BRAT</b>: Community plugins → BRAT → <i>Add a beta plugin</i> → <code>jphermans/hermes-obsidian</code>, then enable <b>Hermes Agent Notes</b>.</li>
+      <li><b>Settings → Hermes Agent Notes</b>: paste the URL, the API key, and anything your route needs (a profile prefix, or extra headers).</li>
+      <li>Press <b>Test connection</b>. Then <b>Open chat panel</b> and ask for a note.</li>
+    </ol>
+
+    <h2 id="choose">Choose your instance</h2>
+    <table>
+      <thead><tr><th>Where Hermes runs</th><th>Where Obsidian runs</th><th>Route</th><th>Phones?</th><th>URL shape</th></tr></thead>
+      <tbody>
+        <tr><td>Same computer</td><td>Same computer</td><td><a href="#same">Loopback</a></td><td><span class="pill bad">no</span></td><td><code>http://127.0.0.1:8642</code></td></tr>
+        <tr><td>A machine at home</td><td>Another device on the same Wi-Fi/LAN</td><td><a href="#lan">LAN over HTTP</a></td><td><span class="pill bad">no</span></td><td><code>http://192.168.1.50:8642</code></td></tr>
+        <tr><td>A machine you own</td><td>Phone, tablet, laptop, anywhere</td><td><a href="#tailscale">Tailscale</a> <span class="pill good">easiest</span></td><td><span class="pill good">yes</span></td><td><code>https://host.tailnet.ts.net</code></td></tr>
+        <tr><td>A machine you own</td><td>Anywhere, plus a public hostname you control</td><td><a href="#cloudflare">Cloudflare Tunnel</a> + Access</td><td><span class="pill good">yes</span></td><td><code>https://hermes.example.com</code></td></tr>
+        <tr><td>A machine you own</td><td>Anywhere, quickest to stand up</td><td><a href="#ngrok">ngrok</a> static domain</td><td><span class="pill good">yes</span></td><td><code>https://name.ngrok.app</code></td></tr>
+        <tr><td>A VPS / server with a domain</td><td>Anywhere</td><td><a href="#proxy">TLS reverse proxy</a></td><td><span class="pill good">yes</span></td><td><code>https://hermes.example.com</code></td></tr>
+        <tr><td>The phone itself (Android/Termux)</td><td>The same phone</td><td><a href="#phone">Loopback on that device</a></td><td><span class="pill warn">that phone only</span></td><td><code>http://127.0.0.1:8642</code></td></tr>
+        <tr><td>Any of the above</td><td>Any of the above</td><td><a href="#profile">A dedicated Hermes profile</a></td><td><span class="pill good">yes</span></td><td>same URL, plus a prefix or port</td></tr>
+      </tbody>
+    </table>
+    <p class="field">A rule that explains the whole table: <b>iOS and Android refuse plain HTTP to any host but the device itself</b> (App Transport Security / network security config). So HTTPS is what makes a phone work — and a route already serving HTTPS on 443 needs no port in the URL.</p>
+
+    <h2 id="host">1 · Enable the API server on the Hermes host</h2>
+    <p>On the machine that runs Hermes, put these in <code>~/.hermes/.env</code> (the enable flag and the key are environment variables — <b>not</b> <code>config.yaml</code> keys):</p>
+    <pre><code>API_SERVER_ENABLED=true
+API_SERVER_KEY=my-secret-key          # a value you invent; the plugin sends it as Bearer
+# API_SERVER_HOST defaults to 127.0.0.1 — leave it unless you know why</code></pre>
+    <p>Then restart the gateway and check it answers on loopback:</p>
+    <pre><code>hermes gateway install &amp;&amp; hermes gateway start     # run as a service, not a terminal
+hermes gateway status
+
+curl -s http://127.0.0.1:8642/health
+curl -s -H "Authorization: Bearer my-secret-key" http://127.0.0.1:8642/v1/models</code></pre>
+    <p class="field">The key is not issued by Hermes — <b>you invent it</b>, store it in the host's <code>.env</code>, and paste the same string into the plugin. It is unrelated to your LLM provider keys (OpenRouter, Nous, Anthropic…), which the plugin never sees. If the API server runs under a named profile, its <code>.env</code> is <code>~/.hermes/profiles/&lt;name&gt;/.env</code>.</p>
+
+    <h2 id="same">2 · Same machine (loopback)</h2>
+    <p>The simplest case: Obsidian and Hermes on one computer.</p>
+    <div class="grid">
+      <div class="field"><b>API server URL</b><br><code>http://127.0.0.1:8642</code></div>
+      <div class="field"><b>API key</b><br>the value from <code>.env</code></div>
+      <div class="field"><b>Profile prefix</b><br>empty</div>
+      <div class="field"><b>Extra headers</b><br>none</div>
+    </div>
+    <div class="card warn"><p style="margin:0"><b>Desktop only.</b> On a phone, <code>127.0.0.1</code> means the phone itself, so the plugin refuses to save that URL on mobile unless you explicitly choose <i>Save anyway</i>. See <a href="#phone">section 9</a> for the one legitimate exception.</p></div>
+
+    <h2 id="lan">3 · Another device on the same network (LAN)</h2>
+    <p>Works on desktop; a phone will refuse it (plain HTTP to another machine).</p>
+    <pre><code># on the Hermes host, only if you accept that anyone on the LAN can reach it
+API_SERVER_HOST=0.0.0.0
+# restart the gateway, find the address
+ipconfig getifaddr en0        # macOS   → 192.168.1.50
+hostname -I | awk '{print $1}'  # Linux</code></pre>
+    <div class="grid">
+      <div class="field"><b>API server URL</b><br><code>http://192.168.1.50:8642</code></div>
+      <div class="field"><b>API key</b><br>the value from <code>.env</code></div>
+    </div>
+    <div class="card warn"><p style="margin:0">Binding to <code>0.0.0.0</code> exposes a full agent with terminal access to your whole network. Prefer <a href="#tailscale">Tailscale</a>: it keeps the server on loopback and gives every device an HTTPS address.</p></div>
+
+    <h2 id="tailscale">4 · Tailscale — the easiest route for phones</h2>
+    <p>Install Tailscale on the Hermes host and on each device, sign both into the same tailnet, then let Tailscale serve HTTPS:</p>
+    <pre><code>tailscale serve --bg 8642        # HTTPS on your tailnet, nothing public
+tailscale serve status</code></pre>
+    <p>It prints an address like <code>https://your-machine.your-tailnet.ts.net</code>. That is your API server URL — no port needed, because Tailscale terminates TLS on 443 for you.</p>
+    <div class="grid">
+      <div class="field"><b>API server URL</b><br><code>https://your-machine.your-tailnet.ts.net</code></div>
+      <div class="field"><b>API key</b><br>the value from <code>.env</code></div>
+    </div>
+    <div class="card ok"><p style="margin:0">The API server itself stays on <code>127.0.0.1</code>: only your tailnet can reach it, and the plugin works identically on desktop, iPhone, iPad and Android.</p></div>
+
+    <h2 id="cloudflare">5 · Cloudflare Tunnel (named) + Access</h2>
+    <p>Gives you a permanent public HTTPS hostname without opening a port. Needs a domain on Cloudflare (the free plan is enough).</p>
+    <pre><code>brew install cloudflared
+cloudflared tunnel login                      # browser: authorise the zone
+cloudflared tunnel create hermes              # note the UUID it prints
+cloudflared tunnel route dns hermes hermes.example.com</code></pre>
+    <p>Then <code>~/.cloudflared/config.yml</code> (replace the UUID with the one you were given):</p>
+    <pre><code>tunnel: 7b9c1f38-2f4c-4a2e-9c11-3f0a5b6d7e80
+credentials-file: /Users/you/.cloudflared/7b9c1f38-2f4c-4a2e-9c11-3f0a5b6d7e80.json
+ingress:
+  - hostname: hermes.example.com
+    service: http://127.0.0.1:8642
+  - service: http_status:404</code></pre>
+    <pre><code>cloudflared tunnel run hermes                 # test, Ctrl-C when it answers
+cloudflared service install                   # starts at login  (sudo … = at boot)
+sudo launchctl start com.cloudflare.cloudflared
+cloudflared tunnel info hermes                # status and live connections</code></pre>
+    <p>Prefer the dashboard? <b>Networking → Tunnels → Create a tunnel → Published application</b> does the same and the connector it hands you also runs as a service.</p>
+
+    <h3>Lock it down with Access + a service token</h3>
+    <ol>
+      <li><b>Zero Trust → Access controls → Service credentials → Service Tokens → Create Service Token.</b> Set a duration (a year is typical) — Cloudflare can alert you a week before it expires.</li>
+      <li>Create an <b>Access application</b> for <code>hermes.example.com</code> with a policy whose action is <b>Service Auth</b>. <span class="pill warn">a plain Allow policy will fail</span> — it keeps asking for an identity-provider login, which a non-browser client cannot do.</li>
+      <li>Copy the two headers it shows you into the plugin's <b>Extra request headers</b>:</li>
+    </ol>
+    <pre><code>CF-Access-Client-Id: 88bf3b6d86161464f6509f7219099e57.access
+CF-Access-Client-Secret: bdd31cbc4dec990953e39163fbbb194c93313ca9f0a6e420346af9d326b1d2a5</code></pre>
+    <div class="grid">
+      <div class="field"><b>API server URL</b><br><code>https://hermes.example.com</code></div>
+      <div class="field"><b>API key</b><br>the value from <code>.env</code></div>
+      <div class="field"><b>Extra headers</b><br>the two <code>CF-Access-*</code> lines</div>
+    </div>
+    <div class="card warn"><p style="margin:0">If you see <b>HTTP 403</b> with Access in front, the service-token headers are missing or the policy is not Service Auth. If the hostname is public with no Access app, anyone who guesses it can drive an agent with terminal access — always put Access in front.</p></div>
+
+    <h2 id="ngrok">6 · ngrok with a static domain</h2>
+    <p>Fastest public HTTPS URL. Claim the <b>static domain</b> your account includes — that is what makes it permanent instead of a new random URL on every restart.</p>
+    <pre><code>brew install ngrok
+ngrok config add-authtoken &lt;your-authtoken&gt;    # dashboard.ngrok.com → Your Authtoken</code></pre>
+    <p>Then <code>~/Library/Application Support/ngrok/ngrok.yml</code> (agent v3 — <code>tunnels:</code> is deprecated):</p>
+    <pre><code>version: 3
+agent:
+  authtoken: &lt;your-authtoken&gt;
+endpoints:
+  - name: hermes
+    url: https://your-name.ngrok.app
+    upstream:
+      url: 8642</code></pre>
+    <pre><code>ngrok config check &amp;&amp; ngrok start hermes      # test it
+ngrok service install --config "$HOME/Library/Application Support/ngrok/ngrok.yml"
+ngrok service start                            # now it survives reboots</code></pre>
+    <div class="grid">
+      <div class="field"><b>API server URL</b><br><code>https://your-name.ngrok.app</code></div>
+      <div class="field"><b>Extra headers</b><br><code>ngrok-skip-browser-warning: true</code></div>
+    </div>
+    <div class="card warn">
+      <p style="margin:0 0 8px"><b>Two ngrok traps.</b> The free tier shows an interstitial page to browsers; the plugin skips it with the header above. ngrok does <b>not</b> let you add that header through traffic policy on a free account, so it has to come from the client — that is why it belongs in the plugin's extra headers.</p>
+      <p style="margin:0">And never use <code>ngrok --basic-auth</code>: it sends an <code>Authorization</code> header, which would replace your Hermes API key and produce a 401.</p>
+    </div>
+
+    <h2 id="proxy">7 · Your own TLS reverse proxy (VPS or home server)</h2>
+    <p>If the machine running Hermes has a domain pointed at it, Caddy gets a certificate automatically and proxies to the loopback API server:</p>
+    <pre><code># /etc/caddy/Caddyfile  (or a Caddyfile next to the binary)
+hermes.example.com {
+    reverse_proxy 127.0.0.1:8642
+}</code></pre>
+    <p>nginx equivalent, including the line that matters for streaming:</p>
+    <pre><code>server {
+    listen 443 ssl;
+    server_name hermes.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8642;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;          # without this, answers arrive in one piece
+        proxy_read_timeout 600s;      # an agent turn can legitimately take minutes
+    }
+}</code></pre>
+    <div class="grid">
+      <div class="field"><b>API server URL</b><br><code>https://hermes.example.com</code></div>
+      <div class="field"><b>API key</b><br>the value from <code>.env</code></div>
+    </div>
+    <p class="field">Keep the API server bound to <code>127.0.0.1</code> so the proxy is the only way in. If you add authentication at the proxy (<code>X-Auth</code>, basic auth on the proxy itself), put those headers in <b>Extra request headers</b> — but remember a header named <code>Authorization</code> replaces the plugin's own key.</p>
+
+    <h2 id="profile">8 · Give the vault its own Hermes profile</h2>
+    <p>By default the plugin talks to your <b>main</b> profile, so vault prompts and answers share the session store and long-term memory with everything else you do with Hermes. To keep vault work in one folder instead, use a profile — a profile <i>is</i> a separate directory:</p>
+    <pre><code>~/.hermes/profiles/obsidian/
+├── config.yaml     # its own model, provider, toolsets
+├── .env            # its own API_SERVER_KEY (and API_SERVER_PORT)
+├── SOUL.md         # its own personality
+├── memories/       # MEMORY.md / USER.md — nothing from your other agent
+├── sessions/       # routing index
+└── state.db        # every prompt and answer that came from the vault</code></pre>
+    <pre><code>hermes profile create obsidian      # creates the profile + an `obsidian` command
+obsidian setup                      # its own model and provider keys</code></pre>
+    <p>Enable its API server in <b>that profile's</b> <code>.env</code>:</p>
+    <pre><code>API_SERVER_ENABLED=true
+API_SERVER_KEY=my-vault-key
+API_SERVER_PORT=8643                # two profiles that both leave this unset collide on 8642</code></pre>
+    <pre><code>obsidian gateway start</code></pre>
+    <div class="card bad">
+      <p style="margin:0"><b>Create the profile first — it is a host-side thing.</b> The plugin only sends HTTP requests: it cannot create a profile and cannot check whether one exists. Until the profile exists and its API server is listening you will see <b>404</b> (wrong port, or a prefix for a profile nobody serves) or <b>401</b> (a key belonging to another profile). You do <i>not</i> have to do this before installing the plugin — start on the default profile and switch later, because the connection is only settings. No shell handy? The Hermes dashboard and desktop app both have a <b>Profiles</b> page that creates, activates and deletes profiles.</p>
+    </div>
+    <h3>Two ways to point the plugin at it</h3>
+    <table>
+      <thead><tr><th></th><th>How</th><th>Plugin settings</th></tr></thead>
+      <tbody>
+        <tr><td><b>Its own port</b> <span class="pill accent">simplest</span></td><td>The profile's gateway listens on 8643</td><td>URL <code>http://&lt;host&gt;:8643</code>, key = that profile's key, prefix empty</td></tr>
+        <tr><td><b>One gateway, many profiles</b></td><td>On the <i>default</i> profile: <code>hermes config set gateway.multiplex_profiles true</code> then <code>hermes gateway restart</code>. A secondary profile must <b>not</b> run its own gateway in this mode</td><td>URL unchanged (<code>:8642</code>), <b>profile prefix</b> <code>obsidian</code> → requests go to <code>/p/obsidian/v1</code> with that profile's key</td></tr>
+      </tbody>
+    </table>
+    <p>What you get: separate sessions and memory, its own <code>SOUL.md</code>, its own key you can rotate alone — and <code>/v1/models</code> starts advertising the <b>profile name</b>, which is how you confirm the routing took effect (it shows up in the plugin's model dropdown). Save the whole connection with <b>Connections → Save this connection as…</b> so "Local" and "Vault profile" are one click apart.</p>
+    <p class="field">Finer control: each conversation already travels in its own lane — the plugin sends <code>X-Hermes-Session-Id</code> per conversation with a memory scope key of <code>obsidian:&lt;VaultName&gt;:&lt;sessionId&gt;</code>. Turning off <b>Report the conversation to Hermes sessions</b> writes nothing to the Hermes session store at all, at the cost of session history and background-delegation delivery.</p>
+
+    <h2 id="phone">9 · Hermes on the phone itself</h2>
+    <p>The one case where loopback is legitimate on mobile: Hermes running on that same phone (Android with Termux, for example). The plugin warns by default because <code>127.0.0.1</code> normally means the phone.</p>
+    <ol>
+      <li>Run Hermes in Termux on the phone, with <code>API_SERVER_ENABLED=true</code> in its <code>.env</code>.</li>
+      <li>In the plugin, enter <code>http://127.0.0.1:8642</code>. The mobile guard blocks it — press <b>Save anyway — Hermes runs on this device</b>.</li>
+      <li>Test connection. Expect it to work while Termux keeps the gateway running; the phone must not be in deep sleep.</li>
+    </ol>
+    <div class="card note"><p style="margin:0">Anything more durable — a phone as the always-on host — is fragile. If you need it available from other devices too, run Hermes on a machine and reach it over <a href="#tailscale">Tailscale</a>.</p></div>
+
+    <h2 id="stream">10 · Streaming (optional)</h2>
+    <p>Live token-by-token output is a <b>browser</b> request, so the Hermes side needs an explicit origin allowlist. Only needed when <i>Stream answers</i> is on.</p>
+    <pre><code>API_SERVER_CORS_ORIGINS=app://obsidian.md,capacitor://localhost,http://localhost</code></pre>
+    <p class="field">Desktop presents <code>app://obsidian.md</code>, iOS <code>capacitor://localhost</code>, Android <code>http://localhost</code> — add the ones you actually use, restart the gateway, then press <b>Verify streaming</b> in the settings. Streaming is <b>off by default</b> because it fails without that line. A buffering proxy in front (nginx without <code>proxy_buffering off</code>, some tunnels) delivers the answer in one piece even when everything is configured correctly — the plugin labels which transport answered under each reply, so you can tell the difference.</p>
+
+    <h2 id="alive">11 · Keep it reachable</h2>
+    <p>A permanent URL is only as permanent as the three layers behind it:</p>
+    <pre><code>hermes gateway install &amp;&amp; hermes gateway start    # 1. the API server as a service
+hermes gateway status                              #    per profile: hermes -p obsidian gateway status
+
+cloudflared service install                        # 2. the tunnel as a service
+ngrok service install --config …  &amp;&amp; ngrok service start
+
+sudo pmset -a sleep 0                              # 3. the host must not sleep (macOS)
+sudo loginctl enable-linger "$USER"                #    Linux: services survive logout</code></pre>
+    <p class="field">Laptops sleep, and a sleeping machine drops the tunnel: the plugin then reports a timeout, not a wrong URL. An always-on box (a mini PC, a NAS, a small VPS) is the reliable answer.</p>
+
+    <h2 id="verify">Verify checklist</h2>
+    <p>Work outward from the server, so a failure tells you which layer is wrong:</p>
+    <ol>
+      <li><b>On the host:</b> <code>curl -s http://127.0.0.1:8642/health</code> answers.</li>
+      <li><b>On the host:</b> <code>curl -s -H "Authorization: Bearer &lt;key&gt;" http://127.0.0.1:8642/v1/models</code> lists <code>hermes-agent</code> (or your profile's name).</li>
+      <li><b>From another device on the same network:</b> the tunnel URL answers — <code>curl -sS https://hermes.example.com/health</code>.</li>
+      <li><b>From mobile data</b> (Wi-Fi off), on the phone: the same curl. This is the test that proves a phone will work — it is not the same as testing on the LAN.</li>
+      <li><b>In the plugin:</b> <b>Test connection</b> → the status card shows <i>Connected</i> with the model name and the round trip.</li>
+      <li><b>In the plugin:</b> <b>Open chat panel</b> → ask something trivial → an answer arrives, and the line under it says which transport ran.</li>
+      <li><b>In the plugin:</b> ask for a new note → the preview shows a rendered version, the Markdown, the file name and syntax checks → <b>Create note</b> writes it.</li>
+    </ol>
+
+    <h2 id="trouble">Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause and fix</th></tr></thead>
+      <tbody>
+        <tr><td>Could not reach Hermes</td><td>Is the gateway running (<code>hermes gateway status</code>)? Is the host right and reachable from this device? Is the tunnel service up (<code>cloudflared tunnel info hermes</code>)?</td></tr>
+        <tr><td><b>401</b> / rejected</td><td>The key does not match <code>API_SERVER_KEY</code> in that instance's <code>.env</code>. If you set a profile prefix, use <i>that</i> profile's key.</td></tr>
+        <tr><td><b>403</b> behind Cloudflare</td><td>Access service-token headers missing, or the policy action is not <b>Service Auth</b>.</td></tr>
+        <tr><td><b>404</b></td><td>Wrong URL (a <code>/v1</code> suffix in the field is a common one — the plugin adds paths itself), or a prefix naming a profile that is not being served, or a profile that does not exist yet.</td></tr>
+        <tr><td><b>429</b></td><td>Too many concurrent runs on the instance — retry, or raise <code>gateway.platforms.api_server.max_concurrent_runs</code>.</td></tr>
+        <tr><td>Timeout / the page seems frozen</td><td>The connection-check timeout (15 s by default) fired: the address is wrong or the host is asleep. Raise it if your instance is just slow.</td></tr>
+        <tr><td>Phone fails while desktop works</td><td>Plain HTTP to another machine — mobile refuses it. Move to HTTPS (Tailscale, Cloudflare, ngrok, a TLS proxy).</td></tr>
+        <tr><td>URL changes every restart</td><td>That is a quick tunnel. Use a <i>named</i> Cloudflare tunnel and its hostname, or ngrok's static domain (<a href="#cloudflare">5</a>, <a href="#ngrok">6</a>).</td></tr>
+        <tr><td>Tokens never appear one by one</td><td>Streaming off (default), missing CORS origin line, or a buffering proxy. Press <b>Verify streaming</b> — it names the cause.</td></tr>
+        <tr><td>Notes do not match my style</td><td>Run <b>Show detected vault conventions</b>, raise <i>Notes to analyse</i>, rescan.</td></tr>
+        <tr><td>Something failed on the phone (no console)</td><td>Settings → Hermes Agent Notes → <b>Diagnostics → Show recent errors</b>, with <i>Copy all</i>. The same text is in <code>&lt;vault&gt;/.obsidian/plugins/hermes-agent-notes/errors.log</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="security">Security</h2>
+    <ul>
+      <li><b>The key protects a full agent</b> with terminal and file access on that machine. Treat it like an SSH key: keep it in <code>.env</code> on the host (mode 600), never in a note, and rotate it if it leaks.</li>
+      <li><b>Prefer an overlay or Access over a bare port.</b> Tailscale or Cloudflare Access in front of a tunnel beats opening 8642 to the internet.</li>
+      <li><b>Keep the API server on <code>127.0.0.1</code></b> and let the tunnel or proxy be the only way in.</li>
+      <li><b>A header named <code>Authorization</code></b> in Extra request headers replaces the plugin's bearer key — that is how an authenticating proxy works, and why <code>ngrok --basic-auth</code> must be avoided.</li>
+      <li><b>Rotate the Access service token</b> before it expires (Cloudflare can alert you a week ahead).</li>
+    </ul>
+
+    <h2 id="privacy">Privacy &amp; backups</h2>
+    <ul>
+      <li>Your vault never leaves the machine unless <i>you</i> send it: the plugin puts the note text it was asked about into the request. Vault <i>conventions</i> (property names, tag style, link style) are summarised and sent as context.</li>
+      <li>With <b>Report the conversation to Hermes sessions</b> on, each conversation becomes a Hermes session in that profile's <code>state.db</code> — visible with <code>hermes sessions</code> and session search. Switch it off and nothing is written server-side.</li>
+      <li>The plugin's own settings file and its export contain the API key and any extra headers <b>in plain text</b>, and a vault is usually synced. Keep those files private.</li>
+      <li><b>Chat history</b> lives in <code>&lt;vault&gt;/.obsidian/plugins/hermes-agent-notes/history.json</code> (30 sessions, newest kept) and can be searched or cleared from the panel's 🕘 button.</li>
+    </ul>
+
+    <h2 id="field">Appendix: what goes in each field</h2>
+    <table>
+      <thead><tr><th>Field</th><th>What it is</th><th>Typical value</th></tr></thead>
+      <tbody>
+        <tr><td><b>API server URL</b></td><td>Root of the instance — <b>no</b> <code>/v1</code> suffix. The port is optional: a tunnel on 443 needs none. Without a scheme, a public hostname becomes <code>https</code>, a LAN or loopback address stays <code>http</code>.</td><td><code>http://127.0.0.1:8642</code><br><code>https://hermes.example.com</code></td></tr>
+        <tr><td><b>API key</b></td><td>The value you invented and put in that instance's <code>.env</code> as <code>API_SERVER_KEY</code>.</td><td>any strong string</td></tr>
+        <tr><td><b>Profile prefix</b></td><td>Only with <code>gateway.multiplex_profiles</code> on the default profile. Requests go to <code>/p/&lt;name&gt;/v1</code>.</td><td><code>obsidian</code> or empty</td></tr>
+        <tr><td><b>Extra request headers</b></td><td>One <code>Name: value</code> per line. Cloudflare Access tokens, an authenticating proxy, ngrok's interstitial skip.</td><td><code>CF-Access-Client-Id: …</code></td></tr>
+        <tr><td><b>Model</b></td><td>What the instance advertises. <code>/v1/models</code> returns one name — <code>hermes-agent</code>, or the profile's name.</td><td><code>hermes-agent</code></td></tr>
+        <tr><td><b>Provider override</b></td><td>Only needed if you want a specific provider on the Hermes side; otherwise the instance uses its own default.</td><td>empty</td></tr>
+        <tr><td><b>How do you reach Hermes?</b></td><td>A picker that fills in the URL template, the headers a route needs, and a <b>Test this route</b> button for each scenario on this page.</td><td>—</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="mobile">Appendix: mobile specifics</h2>
+    <ul>
+      <li>Loopback URLs cannot be saved on mobile without the explicit <i>Save anyway</i> confirmation.</li>
+      <li>Plain HTTP to any other machine is refused by the OS — use HTTPS.</li>
+      <li>Text inputs are 16 px so iOS does not zoom the page when you tap the field; buttons are ≥ 44 px tap targets.</li>
+      <li>Streaming works on mobile too (it is a browser request), but the same CORS line and the same proxy caveats apply.</li>
+      <li>Long answers and big notes are fine, but a phone kills background activity: keep Obsidian in the foreground while a long turn runs, or press <b>Stop</b> and retry on desktop.</li>
+    </ul>
+
+    <div class="card note" style="margin-top:34px">
+      <p style="margin:0">Found a gap in this guide? Open an issue on <a href="https://github.com/jphermans/hermes-obsidian/issues">jphermans/hermes-obsidian</a> with the version from the badge at the top of the plugin's settings page, the route you used, and the error text from <b>Diagnostics → Show recent errors</b>. The same guide ships inside the plugin: <b>Settings → Hermes Agent Notes → Setup guide</b>.</p>
+    </div>
+  </main>
+</div>
+
+<footer>
+  Hermes Agent Notes · <a href="https://github.com/jphermans/hermes-obsidian">github.com/jphermans/hermes-obsidian</a> · install via BRAT with <code>jphermans/hermes-obsidian</code> · docs for Hermes itself: <a href="https://hermes-agent.nousresearch.com/docs/">hermes-agent.nousresearch.com/docs</a>
+</footer>
+
+<script>
+  // Copy buttons on every code block.
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var button = document.createElement("button");
+    button.className = "copy";
+    button.type = "button";
+    button.textContent = "Copy";
+    button.addEventListener("click", function () {
+      var text = pre.querySelector("code") ? pre.querySelector("code").innerText : pre.innerText;
+      var done = function () { button.textContent = "Copied"; setTimeout(function () { button.textContent = "Copy"; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+      } else {
+        fallback(text, done);
+      }
+    });
+    pre.appendChild(button);
+  });
+
+  function fallback(text, done) {
+    var helper = document.createElement("textarea");
+    helper.value = text;
+    helper.style.cssText = "position:fixed;left:-9999px;top:0";
+    document.body.appendChild(helper);
+    helper.select();
+    try { document.execCommand("copy"); done(); } catch (e) { /* select by hand */ }
+    document.body.removeChild(helper);
+  }
+
+  // Theme: follow the OS until the user chooses, then remember it.
+  var stored = null;
+  try { stored = localStorage.getItem("hermes-guide-theme"); } catch (e) { /* private mode */ }
+  if (stored === "dark" || stored === "light") {
+    document.documentElement.className = "theme-" + stored;
+  }
+  document.getElementById("theme").addEventListener("click", function () {
+    var isDark = document.documentElement.classList.contains("theme-dark");
+    var next = isDark ? "light" : "dark";
+    document.documentElement.className = "theme-" + next;
+    try { localStorage.setItem("hermes-guide-theme", next); } catch (e) { /* ignore */ }
+  });
+</script>
+</body>
+</html>

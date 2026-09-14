@@ -11,6 +11,9 @@ import { PromptModal } from "./ui/prompt-modal";
 import { describeProfile, profileMatches } from "./profiles";
 import { listFolders } from "./vault-rules";
 
+/** The published, long-form setup guide — every route in one page. */
+const GUIDE_URL = "https://jphermans.github.io/hermes-obsidian/";
+
 /** One-click prompts for the setup page's prompt box. */
 const PROMPT_SAMPLES: { label: string; prompt: string }[] = [
   {
@@ -94,6 +97,11 @@ export class HermesSettingTab extends PluginSettingTab {
       state.toggleClass("is-ok", !!connection.ok);
       state.toggleClass("is-bad", !connection.ok);
     }
+
+    const guide = row.createEl("a", { cls: "hermes-version-guide", text: "Complete setup guide ↗" });
+    guide.setAttr("href", GUIDE_URL);
+    guide.setAttr("target", "_blank");
+    guide.setAttr("rel", "noopener");
   }
 
   // --- connection ----------------------------------------------------------
@@ -728,6 +736,20 @@ export class HermesSettingTab extends PluginSettingTab {
     steps.createEl("p", {
       text:
         "Hermes exposes an OpenAI-compatible API server. The plugin talks to it; Hermes never needs access to this vault, because the plugin writes every note itself.",
+    });
+
+    // The long-form version of this guide, for every route and every setup.
+    const webGuide = steps.createDiv({ cls: "hermes-guide-web" });
+    const webLink = webGuide.createEl("a", {
+      cls: "hermes-guide-link",
+      text: "Complete setup guide for every instance ↗",
+    });
+    webLink.setAttr("href", GUIDE_URL);
+    webLink.setAttr("target", "_blank");
+    webLink.setAttr("rel", "noopener");
+    webGuide.createEl("span", {
+      cls: "hermes-guide-web-url",
+      text: "same machine · LAN · Tailscale · Cloudflare Tunnel · ngrok · reverse proxy · its own profile · on the phone — with a copy button on every command",
     });
 
     steps.createEl("h3", { text: "1 · Enable the API server on the Hermes host" });

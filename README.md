@@ -31,6 +31,8 @@ Hermes runs on your machine or on a server you own. The plugin talks to its Open
 - [Releasing (BRAT)](#releasing-brat)
 - [Author](#author)
 
+**Complete setup guide (web): <https://jphermans.github.io/hermes-obsidian/>** — every instance and route in one page, with copy buttons.
+
 ---
 
 ## How it works
@@ -65,7 +67,11 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 
 ## Setup
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.19** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+> **Complete setup guide for every instance — same machine, LAN, Tailscale, Cloudflare Tunnel, ngrok, a TLS reverse proxy, a dedicated profile, or Hermes on the phone itself: <https://jphermans.github.io/hermes-obsidian/>**
+>
+> It is the long-form version of the sections below, with a copy button on every command and a verify checklist that walks outward from the server. The same guide is in the plugin: **Settings → Hermes Agent Notes → Setup guide**.
+
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.23** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -127,6 +133,8 @@ API_SERVER_CORS_ORIGINS=app://obsidian.md,capacitor://localhost,http://localhost
 Restart the gateway afterwards. Desktop presents `app://obsidian.md`, iOS `capacitor://localhost`, Android `http://localhost`. With **Stream answers** off (the default) the plugin uses Obsidian's native HTTP client and needs no CORS entry at all — and if a streaming request is refused, it falls back to that transport automatically.
 
 ## Reachable from anywhere
+
+**If you would rather read one page that covers all of it** — every route below plus LAN, a reverse proxy, a dedicated profile, Hermes on the phone, and a verify checklist — that page is <https://jphermans.github.io/hermes-obsidian/>.
 
 Phones and tablets refuse plain HTTP to another machine (iOS ATS, Android network security), so `http://192.168.x.x:8642` works on desktop but not on mobile. Expose the API server over HTTPS and the same URL works from every device, on any network.
 
@@ -493,6 +501,8 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **Where is that text stored, and can I see it?** | With **Report the conversation to Hermes sessions** on, each conversation is a Hermes session — visible with `hermes sessions` and session search, and stored in the profile's `state.db`. Switch that setting off and nothing is written server-side at all. |
 
 ## Development
+
+The published setup guide lives in `docs/index.html` — a single self-contained page (inline CSS/JS, no external assets) served by GitHub Pages from the `docs/` folder on `main`. Keep the version badge in its header in step with `manifest.json` when you cut a release.
 
 ```bash
 npm install
