@@ -20,6 +20,7 @@ Hermes runs on your machine or on a server you own. The plugin talks to its Open
 - [Install with BRAT](#install-with-brat)
 - [Setup](#setup)
 - [Reachable from anywhere](#reachable-from-anywhere)
+- [Keeping vault work in its own Hermes profile](#keeping-vault-work-in-its-own-hermes-profile)
 - [Commands](#commands)
 - [Following Obsidian's rules](#following-obsidians-rules)
 - [Mobile](#mobile)
@@ -166,6 +167,57 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 **Two gotchas on these routes.** Cloudflare Tunnel quick tunnels get a new random URL on every restart — use a named tunnel for anything permanent, and put Cloudflare Access (service token) in front of it. ngrok's free tier shows an interstitial page to browsers, which the suggested `ngrok-skip-browser-warning: true` header skips; do **not** use `ngrok --basic-auth`, because its `Authorization` header would replace your Hermes API key.
 
 **Security.** The key protects a full agent with terminal access on that machine. Prefer Tailscale or Cloudflare Access over a bare public port, and rotate `API_SERVER_KEY` if it ever leaks.
+
+## Keeping vault work in its own Hermes profile
+
+By default the plugin talks to your **main** Hermes profile, so every prompt and answer from this vault is stored in the same session store and memory as everything else you do with Hermes — `hermes sessions` lists them side by side. If you would rather keep vault work in one place on the Hermes host, give it its own **profile**. A profile *is* a separate folder:
+
+```
+~/.hermes/profiles/obsidian/
+├── config.yaml     # its own model, provider, toolsets
+├── .env            # its own API_SERVER_KEY (and API_SERVER_PORT)
+├── SOUL.md         # its own personality
+├── memories/       # MEMORY.md / USER.md — nothing from your other agent
+├── sessions/       # routing index
+└── state.db        # every prompt and answer that came from the vault
+```
+
+```bash
+hermes profile create obsidian      # creates the profile and an `obsidian` command
+obsidian setup                      # its own model and provider keys
+```
+
+Enable its API server in **that profile's** `.env` — `~/.hermes/profiles/obsidian/.env` (the flag is an environment variable, not a `config.yaml` key):
+
+```
+API_SERVER_ENABLED=true
+API_SERVER_KEY=<a key just for this profile>
+API_SERVER_PORT=8643
+```
+
+```bash
+obsidian gateway start
+```
+
+Then point the plugin at it, either way:
+
+| | How | Plugin settings |
+|---|---|---|
+| **Its own port** (simplest) | The profile's gateway listens on 8643 | *API server URL* `http://<host>:8643`, *API key* = that profile's key, *Profile prefix* empty |
+| **One gateway, many profiles** | On the **default** profile: `hermes config set gateway.multiplex_profiles true`, then `hermes gateway restart`. In this mode a secondary profile must **not** run its own gateway | URL unchanged (`:8642`), *Profile prefix* `obsidian` → requests go to `/p/obsidian/v1` and are authenticated with that profile's own key |
+
+What this buys you:
+
+- **Sessions and memory are separate.** Nothing the plugin sends appears in your main agent's session history or `MEMORY.md`, and nothing from other work leaks into the vault agent's context.
+- **Its own `SOUL.md`**, so the vault agent answers as your notes assistant rather than as your general-purpose agent with vault text mixed into its context.
+- **Its own key**, so the plugin's credential can be rotated or revoked without touching anything else.
+- `/v1/models` advertises the **profile name** (`obsidian`), which is how you confirm the routing took effect — it appears in the plugin's model dropdown.
+
+Save the whole connection with *Connections → Save this connection as…* so you can switch between "Local" and "Vault profile" in one click.
+
+**Two things to watch.** Two profiles that both leave `API_SERVER_PORT` unset will both try to bind **8642** — give each one its own port. And under multiplexing you only manage the *default* profile's gateway; a secondary profile's gateway must stay stopped.
+
+**Finer control.** Each conversation already travels in its own lane: the plugin sends `X-Hermes-Session-Id` per conversation, with a memory-scope key of `obsidian:<VaultName>:<sessionId>`. Turning off **Report the conversation to Hermes sessions** (Settings → *Conversation*) means nothing is written to the Hermes session store at all — at the cost of session history and background-delegation delivery.
 
 ## Commands
 
@@ -334,6 +386,8 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **How do I switch between my local and remote Hermes?** | Fill in the connection for one of them, then **Connections → Save this connection as…**. Repeat for the other. *Use* switches: URL, key, headers, profile prefix, model and provider are all replaced, and the advertised model list is cleared because the new endpoint has its own. |
 | **Can I find a conversation from yesterday?** | The 🕘 button in the chat header. It searches titles *and* message bodies, shows how long ago each was, and *Restore* puts it back in the panel — the next message simply continues with a new Hermes session. Sessions are capped at 30, newest kept, in `history.json` next to `errors.log`. |
 | **The note opened but jumped somewhere odd** | That is **Follow edits**: after an approved edit the note opens at the first changed line. Switch it off under **Follow edits** if you would rather stay where you were. |
+| **Do my Obsidian conversations mix with my other Hermes work?** | Yes by default — the plugin talks to your main profile, so vault prompts and answers sit in the same session store and memory as everything else. Give the vault its own profile to keep it in one folder: see [Keeping vault work in its own Hermes profile](#keeping-vault-work-in-its-own-hermes-profile). |
+| **Where is that text stored, and can I see it?** | With **Report the conversation to Hermes sessions** on, each conversation is a Hermes session — visible with `hermes sessions` and session search, and stored in the profile's `state.db`. Switch that setting off and nothing is written server-side at all. |
 
 ## Development
 

@@ -819,6 +819,40 @@ export class HermesSettingTab extends PluginSettingTab {
         "Each Hermes profile runs its own API server on its own port with its own key. Point the URL at that port, or enable gateway.multiplex_profiles and set the profile prefix — a named prefix accepts only that profile's own key.",
     });
 
+    steps.createEl("h3", { text: "6 · Keep vault work in its own Hermes profile" });
+    steps.createEl("p", {
+      text:
+        "By default this vault talks to your main Hermes profile, so its prompts and answers share the session store and memory with everything else you do with Hermes. A profile is a separate folder — its own config, key, personality, memory and sessions — so use one when you want vault work kept apart:",
+    });
+    this.codeBlock(
+      steps,
+      [
+        "hermes profile create obsidian      # profile + an `obsidian` command",
+        "obsidian setup                      # its own model and provider keys",
+        "",
+        "# then in ~/.hermes/profiles/obsidian/.env (an env var, not config.yaml):",
+        "API_SERVER_ENABLED=true",
+        "API_SERVER_KEY=my-vault-key",
+        "API_SERVER_PORT=8643",
+        "",
+        "obsidian gateway start",
+      ],
+      "Copy commands"
+    );
+    const profileNotes = steps.createEl("ul", { cls: "hermes-guide-list" });
+    profileNotes.createEl("li", {
+      text: "Its own port (simplest): put http://<host>:8643 and that profile's key in the fields above, and leave the profile prefix empty.",
+    });
+    profileNotes.createEl("li", {
+      text: "One gateway for several profiles: run `hermes config set gateway.multiplex_profiles true` on the default profile and restart it, then keep the URL as it is and set the profile prefix to obsidian. Requests go to /p/obsidian/v1. In this mode a secondary profile must not run its own gateway.",
+    });
+    profileNotes.createEl("li", {
+      text: "You will know it worked when /v1/models advertises the profile name (obsidian) — it appears in the model dropdown in the chat panel.",
+    });
+    profileNotes.createEl("li", {
+      text: "Two profiles that both leave API_SERVER_PORT unset both try to bind 8642, so give each profile its own port.",
+    });
+
     const about = containerEl.createDiv({ cls: "hermes-callout" });
     about.createEl("p", {
       text:
