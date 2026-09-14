@@ -73,7 +73,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 >
 > The setup page stays short on purpose: the per-route recipes live behind the **How do you reach Hermes?** dropdown (that route's commands, URL shape, headers and a *Test this route* button — plus a link to its walkthrough), and the guide itself lists the routes as links instead of printing every recipe at once.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.26** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.27** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 

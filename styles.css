@@ -17,6 +17,9 @@
   --hermes-muted: var(--text-muted);
   --hermes-faint: var(--text-faint);
   --hermes-accent-soft: var(--background-modifier-hover);
+  /* Text/line accent. Without the mix toward text-normal, a bright theme accent
+     is unreadable as text on light backgrounds. */
+  --hermes-accent: color-mix(in srgb, var(--interactive-accent) 74%, var(--text-normal) 26%);
   --hermes-warn: var(--text-warning);
   --hermes-ok: var(--text-success);
   --hermes-bad: var(--text-error);
@@ -35,6 +38,7 @@ body.theme-dark .hermes-statusbar {
   --hermes-muted: color-mix(in srgb, var(--text-muted) 85%, #d3dbe6);
   --hermes-faint: color-mix(in srgb, var(--text-faint) 80%, #aab6c6);
   --hermes-accent-soft: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+  --hermes-accent: color-mix(in srgb, var(--interactive-accent) 70%, #ffffff 30%);
   --hermes-warn: color-mix(in srgb, var(--color-orange, #e0a020) 80%, #ffffff);
   --hermes-ok: color-mix(in srgb, var(--color-green, #2ecc71) 85%, #ffffff);
   --hermes-bad: color-mix(in srgb, var(--color-red, #e5534b) 85%, #ffffff);
@@ -53,6 +57,7 @@ body.theme-light .hermes-statusbar {
   --hermes-muted: color-mix(in srgb, var(--text-muted) 72%, #3d4860);
   --hermes-faint: color-mix(in srgb, var(--text-faint) 70%, #55617a);
   --hermes-accent-soft: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+  --hermes-accent: color-mix(in srgb, var(--interactive-accent) 74%, #1b2430 26%);
   --hermes-warn: color-mix(in srgb, var(--color-orange, #b26a00) 75%, #2f3a4d);
   --hermes-ok: color-mix(in srgb, var(--color-green, #1f7a44) 75%, #2f3a4d);
   --hermes-bad: color-mix(in srgb, var(--color-red, #b3322a) 80%, #2f3a4d);
@@ -872,6 +877,44 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   font-weight: 500;
   padding: 4px 0;
   min-height: 24px;
+}
+
+/* Dropdowns: the selected value is the choice you made, so make it legible at a
+   glance instead of plain grey on grey. */
+.hermes-settings select,
+.hermes-settings .dropdown,
+.hermes-chat-model select,
+.hermes-model-select {
+  color: var(--hermes-accent);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.hermes-settings select,
+.hermes-settings .dropdown {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: var(--font-ui-small);
+  background-color: var(--hermes-surface-quiet);
+  border: 1px solid var(--hermes-border);
+  border-radius: 8px;
+}
+
+.hermes-settings select:hover,
+.hermes-settings .dropdown:hover {
+  border-color: var(--hermes-accent);
+}
+
+.hermes-settings select:focus-visible,
+.hermes-settings .dropdown:focus-visible {
+  border-color: var(--hermes-accent);
+  outline: 2px solid var(--hermes-accent-soft);
+}
+
+/* The option list itself: bold text where the platform honours it. */
+.hermes-settings select option {
+  color: var(--text-normal);
+  font-weight: 600;
 }
 
 /* Quick prompt chips above the chat input. */

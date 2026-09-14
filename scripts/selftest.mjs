@@ -493,6 +493,23 @@ test("every route links to a walkthrough that actually exists", () => {
   }
 });
 
+test("every CSS token the plugin uses is actually defined", () => {
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const used = new Set([...css.matchAll(/var\((--hermes-[a-z-]+)/g)].map((match) => match[1]));
+  const defined = new Set([...css.matchAll(/^\s*(--hermes-[a-z-]+):/gm)].map((match) => match[1]));
+  const missing = [...used].filter((token) => !defined.has(token));
+  // An undefined custom property makes the whole declaration invalid and the
+  // browser drops it silently — the accent styling "works" and does nothing.
+  assert.deepEqual(missing, [], "used but never defined: " + missing.join(", "));
+
+  // Base, dark and light scopes: a token defined in only one theme does nothing
+  // in the other, which is how the accent went missing for six releases.
+  for (const token of ["--hermes-accent", "--hermes-accent-soft", "--hermes-border", "--hermes-muted", "--hermes-faint"]) {
+    const count = (css.match(new RegExp("^\\s*" + token + ":", "gm")) || []).length;
+    assert.ok(count >= 3, token + " is defined in only " + count + " of 3 theme scopes");
+  }
+});
+
 test("presetFor falls back to local for an unknown mode", () => {
   assert.equal(hermes.presetFor("nonsense").id, "local");
   assert.equal(hermes.presetFor(undefined).id, "local");
