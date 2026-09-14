@@ -764,15 +764,23 @@ export class HermesSettingTab extends PluginSettingTab {
     this.codeBlock(
       steps,
       [
-        "hermes config set API_SERVER_ENABLED true",
-        "hermes config set API_SERVER_KEY my-secret-key",
+        "# ~/.hermes/.env — environment variables, not config.yaml keys",
+        "API_SERVER_ENABLED=true",
+        "API_SERVER_KEY=my-secret-key",
+        "",
+        "# API_SERVER_HOST defaults to 127.0.0.1: this device only.",
+        "# Set it when another device has to reach the API server:",
+        "# API_SERVER_HOST=0.0.0.0            # LAN (desktop only — phones need HTTPS)",
+        "# API_SERVER_HOST=10.8.0.1           # a WireGuard VPN address",
+        "# (a tunnel or proxy does not need this: it connects over loopback)",
+        "",
         "hermes gateway stop && hermes gateway",
       ],
       "Copy commands"
     );
     steps.createEl("p", {
       cls: "setting-item-description",
-      text: "The flag goes to config.yaml, the key to ~/.hermes/.env. Paste the same key into the API key field above.",
+      text: "The flag and the key are environment variables — hermes config set does not own those names. Paste the same key into the API key field above, and leave API_SERVER_HOST alone unless something other than this machine has to reach the port.",
     });
 
     steps.createEl("h3", { text: "2 · Check that it is listening" });
@@ -845,8 +853,11 @@ export class HermesSettingTab extends PluginSettingTab {
       steps,
       [
         "hermes profile create obsidian      # + an `obsidian` command",
-        "# ~/.hermes/profiles/obsidian/.env:  API_SERVER_ENABLED=true",
-        "#   API_SERVER_KEY=my-vault-key  API_SERVER_PORT=8643",
+        "# ~/.hermes/profiles/obsidian/.env:",
+        "#   API_SERVER_ENABLED=true",
+        "#   API_SERVER_KEY=my-vault-key",
+        "#   API_SERVER_PORT=8643",
+        "#   API_SERVER_HOST=127.0.0.1      # or 0.0.0.0 / the VPN address to reach it from another device",
         "obsidian setup && obsidian gateway start",
       ],
       "Copy commands"
@@ -856,7 +867,7 @@ export class HermesSettingTab extends PluginSettingTab {
       text: "Create the profile on the Hermes host first — the plugin only sends requests, so it cannot create one or check for one. Until it exists and its API server is listening you will see 404 (wrong port or prefix) or 401 (a key from another profile). No shell handy? hermes dashboard → Profiles does it, and you can start on your default profile today and switch later.",
     });
     profileNotes.createEl("li", {
-      text: "Route to it either way: its own port (URL http://<host>:8643, that profile's key, empty prefix), or one gateway with gateway.multiplex_profiles true on the default profile and the prefix obsidian → /p/obsidian/v1. Under multiplexing a secondary profile must not run its own gateway, and two profiles that both leave API_SERVER_PORT unset collide on 8642.",
+      text: "Route to it either way: its own port (URL http://<host>:8643, that profile's key, empty prefix), or one gateway with gateway.multiplex_profiles true on the default profile and the prefix obsidian → /p/obsidian/v1. Under multiplexing a secondary profile must not run its own gateway, and two profiles that both leave API_SERVER_PORT unset collide on 8642. API_SERVER_HOST defaults to 127.0.0.1 — with multiplexing the host and port belong to the default profile's API server, since that is the one actually listening.",
     });
     const profileDoc = profileNotes.createEl("li", {
       text: "You will know it routed when /v1/models advertises the profile name — it appears in the chat panel's model dropdown. Full walkthrough: ",

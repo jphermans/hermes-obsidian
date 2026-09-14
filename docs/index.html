@@ -167,7 +167,7 @@
 <body>
 <header class="top">
   <div class="top-inner">
-    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.27</span> <small>complete setup guide</small></span>
+    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.28</span> <small>complete setup guide</small></span>
     <span class="top-actions">
       <a class="ghost" style="padding:7px 11px;border:1px solid var(--border);border-radius:8px" href="https://github.com/jphermans/hermes-obsidian">Repository</a>
       <button class="ghost" id="theme">Theme</button>
@@ -529,7 +529,9 @@
     <p>On the machine that runs Hermes, put these in <code>~/.hermes/.env</code> (the enable flag and the key are environment variables — <b>not</b> <code>config.yaml</code> keys):</p>
     <pre><code>API_SERVER_ENABLED=true
 API_SERVER_KEY=my-secret-key          # a value you invent; the plugin sends it as Bearer
-# API_SERVER_HOST defaults to 127.0.0.1 — leave it unless you know why</code></pre>
+# API_SERVER_HOST defaults to 127.0.0.1 — this device only.
+# Set it (0.0.0.0 for the LAN, or a VPN address) when another device
+# has to reach the API server. A tunnel or proxy needs nothing here.</code></pre>
     <p>Then restart the gateway and check it answers on loopback:</p>
     <pre><code>hermes gateway install &amp;&amp; hermes gateway start     # run as a service, not a terminal
 hermes gateway status
@@ -898,7 +900,8 @@ obsidian setup                      # its own model and provider keys</code></pr
     <p>Enable its API server in <b>that profile's</b> <code>.env</code>:</p>
     <pre><code>API_SERVER_ENABLED=true
 API_SERVER_KEY=my-vault-key
-API_SERVER_PORT=8643                # two profiles that both leave this unset collide on 8642</code></pre>
+API_SERVER_PORT=8643                # two profiles that both leave this unset collide on 8642
+API_SERVER_HOST=127.0.0.1           # default, this device only — 0.0.0.0 or a VPN address to reach it remotely</code></pre>
     <pre><code>obsidian gateway start</code></pre>
     <div class="card bad">
       <p style="margin:0"><b>Create the profile first — it is a host-side thing.</b> The plugin only sends HTTP requests: it cannot create a profile and cannot check whether one exists. Until the profile exists and its API server is listening you will see <b>404</b> (wrong port, or a prefix for a profile nobody serves) or <b>401</b> (a key belonging to another profile). You do <i>not</i> have to do this before installing the plugin — start on the default profile and switch later, because the connection is only settings. No shell handy? The Hermes dashboard and desktop app both have a <b>Profiles</b> page that creates, activates and deletes profiles.</p>

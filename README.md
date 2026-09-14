@@ -73,17 +73,25 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 >
 > The setup page stays short on purpose: the per-route recipes live behind the **How do you reach Hermes?** dropdown (that route's commands, URL shape, headers and a *Test this route* button — plus a link to its walkthrough), and the guide itself lists the routes as links instead of printing every recipe at once.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.27** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.28** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
+Put these in `~/.hermes/.env` — the enable flag and the key are **environment variables**, not `config.yaml` keys:
+
+```
+API_SERVER_ENABLED=true
+API_SERVER_KEY=my-secret-key
+# API_SERVER_HOST defaults to 127.0.0.1 — this device only. Set it when another
+# device has to reach the port: 0.0.0.0 for the LAN (desktop only — phones need
+# HTTPS) or the VPN address for WireGuard. A tunnel or proxy needs nothing here.
+```
+
 ```bash
-hermes config set API_SERVER_ENABLED true
-hermes config set API_SERVER_KEY my-secret-key
 hermes gateway stop && hermes gateway
 ```
 
-The flag lands in `config.yaml`, the key in `~/.hermes/.env`. You should see:
+You should see:
 
 ```
 [API Server] API server listening on http://127.0.0.1:8642
@@ -415,6 +423,8 @@ Enable its API server in **that profile's** `.env` — `~/.hermes/profiles/obsid
 API_SERVER_ENABLED=true
 API_SERVER_KEY=<a key just for this profile>
 API_SERVER_PORT=8643
+# API_SERVER_HOST defaults to 127.0.0.1 — set 0.0.0.0 (LAN) or the VPN address
+# when another device has to reach it. A tunnel or proxy needs nothing here.
 ```
 
 ```bash

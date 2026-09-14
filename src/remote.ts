@@ -36,7 +36,12 @@ export const REMOTE_PRESETS: RemotePreset[] = [
     id: "local",
     label: "Local — Hermes runs on the same device as Obsidian",
     summary: "Default. The API server listens on http://127.0.0.1:8642 and only this machine can reach it.",
-    commands: ["hermes config set API_SERVER_ENABLED true", "hermes gateway"],
+    commands: [
+      "# ~/.hermes/.env — environment variables, not config.yaml keys",
+      "API_SERVER_ENABLED=true",
+      "API_SERVER_KEY=my-secret-key",
+      "hermes gateway stop && hermes gateway",
+    ],
     urlTemplate: "http://127.0.0.1:8642",
     requiredHeaders: [],
     optionalHeaders: [],

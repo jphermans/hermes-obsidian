@@ -510,6 +510,23 @@ test("every CSS token the plugin uses is actually defined", () => {
   }
 });
 
+test("no route tells the user to config-set an environment variable", () => {
+  // `hermes config set API_SERVER_ENABLED true` warns about an unknown key and
+  // still writes a stray top-level key into config.yaml. The flag, key, port and
+  // host are env vars: they belong in .env.
+  const bad = [];
+  for (const preset of hermes.REMOTE_PRESETS) {
+    for (const line of preset.commands) {
+      if (/config set\s+API_SERVER_/i.test(line)) bad.push(preset.id + ": " + line);
+    }
+  }
+  assert.deepEqual(bad, [], "env vars must not be set with `config set`: " + bad.join(" | "));
+  assert.ok(
+    hermes.presetFor("local").commands.join("\n").includes("API_SERVER_ENABLED=true"),
+    "the local route must show the .env form"
+  );
+});
+
 test("presetFor falls back to local for an unknown mode", () => {
   assert.equal(hermes.presetFor("nonsense").id, "local");
   assert.equal(hermes.presetFor(undefined).id, "local");
