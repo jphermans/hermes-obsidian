@@ -193,6 +193,32 @@ await test("with caveat stripping off, the answer is saved verbatim", async () =
   assert.ok(content.indexOf("Let me know") >= 0, "stripping is off, the text must be untouched");
 });
 
+await test("append reaches the open note while the sidebar has focus", async () => {
+  const plugin = await makePlugin();
+  // Obsidian reports no active MarkdownView here — exactly what happens when the
+  // chat panel owns focus — but getActiveFile() still knows the open note.
+  app.setActiveFile("Kitchen renovation.md");
+  assert.equal(plugin.activeNoteName(), "Kitchen renovation", "the active note was not found");
+  await plugin.appendToActiveNote("Appended from the chat panel.\n\nLet me know if you want more.");
+  const file = app.vault.getAbstractFileByPath("Kitchen renovation.md");
+  const content = await app.vault.read(file);
+  assert.ok(content.indexOf("Appended from the chat panel.") >= 0, "nothing was appended: " + content);
+  assert.ok(content.indexOf("Let me know") < 0, "the caveat was appended: " + content);
+  assert.ok(content.startsWith("---"), "existing frontmatter must survive: " + content);
+  assert.ok(content.indexOf("See [[Boiler service]]") >= 0, "existing body must survive: " + content);
+  assert.ok(content.indexOf("# Kitchen renovation") >= 0, "the heading must survive: " + content);
+});
+
+await test("with nothing open, append says so instead of writing anywhere", async () => {
+  const plugin = await makePlugin();
+  app.setActiveFile(null);
+  assert.equal(plugin.activeNoteFile(), null);
+  await plugin.appendToActiveNote("should not be written");
+  const files = app.vault.getMarkdownFiles();
+  const written = files.filter((file) => file.path.toLowerCase().indexOf("should") >= 0);
+  assert.equal(written.length, 0, "a note was created for a request with no active note");
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");

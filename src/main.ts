@@ -66,6 +66,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
   private scanPromise: Promise<VaultConventions | null> | null = null;
   private statusBarEl: HTMLElement | null = null;
   private backupTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastMarkdownView: MarkdownView | null = null;
   lastBackupAt = 0;
 
   async onload(): Promise<void> {
@@ -82,7 +83,12 @@ export default class HermesAgentNotesPlugin extends Plugin {
     this.statusBarEl.addClass("hermes-statusbar");
     this.refreshStatusBar();
 
-    this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.refreshViews()));
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", (leaf) => {
+        this.rememberMarkdownView(leaf);
+        this.refreshViews();
+      })
+    );
   }
 
   onunload(): void {
@@ -423,9 +429,36 @@ export default class HermesAgentNotesPlugin extends Plugin {
 
   // --- note context --------------------------------------------------------
 
+  /**
+   * Remembers the last markdown view. While the chat panel (a sidebar view) has
+   * focus, `getActiveViewOfType(MarkdownView)` returns null, so the editor has to
+   * be recalled from the last leaf that was a markdown view.
+   */
+  private rememberMarkdownView(leaf?: WorkspaceLeaf | null): void {
+    const view = leaf && leaf.view instanceof MarkdownView ? leaf.view : this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (view && view.file) this.lastMarkdownView = view;
+  }
+
+  /**
+   * The note Obsidian considers open — `getActiveFile()` keeps tracking it even
+   * when the sidebar holds focus, which is why Append works with the chat open.
+   */
   activeNoteFile(): TFile | null {
+    const usable = (file: TFile | null | undefined): TFile | null => {
+      if (!file || file.extension !== "md") return null;
+      // Excalidraw drawings are .md files too — never append prose into one.
+      if (file.path.toLowerCase().endsWith(".excalidraw.md")) return null;
+      return file;
+    };
+    const active = usable(this.app.workspace.getActiveFile());
+    if (active) return active;
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    return view && view.file ? view.file : null;
+    if (view) {
+      const fromView = usable(view.file);
+      if (fromView) return fromView;
+    }
+    if (this.lastMarkdownView) return usable(this.lastMarkdownView.file);
+    return null;
   }
 
   activeNoteName(): string {
@@ -433,9 +466,17 @@ export default class HermesAgentNotesPlugin extends Plugin {
     return file ? file.basename : "";
   }
 
+  /** The editor to insert into, if any is reachable from the current layout. */
+  private activeEditor(): Editor | null {
+    const info = this.app.workspace.activeEditor;
+    if (info && info.editor) return info.editor;
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView) || this.lastMarkdownView;
+    if (view && view.file) return view.editor;
+    return null;
+  }
+
   private withActiveNote(checking: boolean, action: () => void): boolean {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    const hasFile = !!(view && view.file);
+    const hasFile = this.activeNoteFile() !== null;
     if (!checking && hasFile) action();
     return hasFile;
   }
@@ -852,30 +893,39 @@ export default class HermesAgentNotesPlugin extends Plugin {
   }
 
   insertAtCursor(text: string): void {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view || !view.file) {
-      new Notice("Open a note to insert into.");
+    const cleaned = this.cleanAnswer(text);
+    const editor = this.activeEditor();
+    if (editor) {
+      const cursor = editor.getCursor();
+      editor.replaceSelection((cursor.ch > 0 ? "\n\n" : "") + cleaned.text + "\n");
+      new Notice("Inserted at the cursor" + cleaned.suffix + ".");
       return;
     }
-    const cleaned = this.cleanAnswer(text);
-    const editor = view.editor;
-    const cursor = editor.getCursor();
-    editor.replaceSelection((cursor.ch > 0 ? "\n\n" : "") + cleaned.text + "\n");
-    new Notice("Inserted at the cursor" + cleaned.suffix + ".");
+    // No editor reachable (chat panel focused, note in another window): appending
+    // is more useful than refusing.
+    const file = this.activeNoteFile();
+    if (file) {
+      void this.appendToFile(file, cleaned, "appended to the end of ");
+      return;
+    }
+    new Notice("Open a note first — Obsidian has no active note right now.");
   }
 
   async appendToActiveNote(text: string): Promise<void> {
     const file = this.activeNoteFile();
     if (!file) {
-      new Notice("Open a note to append to.");
+      new Notice("Open a note first — Obsidian has no active note right now.");
       return;
     }
-    const cleaned = this.cleanAnswer(text);
+    await this.appendToFile(file, this.cleanAnswer(text), "appended to ");
+  }
+
+  private async appendToFile(file: TFile, cleaned: { text: string; suffix: string }, verb: string): Promise<void> {
     try {
       const current = await this.app.vault.read(file);
       const separator = current.length === 0 || current.endsWith("\n") ? "\n" : "\n\n";
       await this.app.vault.modify(file, current + separator + cleaned.text + "\n");
-      new Notice("Appended to " + file.basename + cleaned.suffix + ".");
+      new Notice("Answer " + verb + file.basename + cleaned.suffix + ".");
     } catch (error) {
       new Notice("Could not update the note: " + (error instanceof Error ? error.message : String(error)));
     }

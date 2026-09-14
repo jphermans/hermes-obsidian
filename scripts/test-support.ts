@@ -90,9 +90,12 @@ export function makeApp(files: FakeFile[]) {
 }
 
 export function makeAppObject(files: FakeFile[]) {
-  const { vault } = makeApp(files);
+  const { vault, store } = makeApp(files);
+  let activePath: string | null = null;
   const workspace = {
+    activeEditor: null,
     getActiveViewOfType: () => null,
+    getActiveFile: () => (activePath ? store.find((entry) => entry.path === activePath) || null : null),
     on: () => ({}),
     getLeavesOfType: () => [],
     getRightLeaf: () => null,
@@ -100,5 +103,13 @@ export function makeAppObject(files: FakeFile[]) {
     revealLeaf() {},
     detachLeavesOfType() {},
   };
-  return { vault, workspace } as unknown as import("obsidian").App;
+  const app = {
+    vault,
+    workspace,
+    /** Test helper: pretend Obsidian has this note open while the sidebar has focus. */
+    setActiveFile: (path: string | null) => {
+      activePath = path;
+    },
+  };
+  return app as unknown as import("obsidian").App;
 }
