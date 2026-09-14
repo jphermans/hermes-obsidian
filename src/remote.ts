@@ -23,6 +23,10 @@ export interface RemotePreset {
   optionalHeaders: string[];
   /** Notes and gotchas for this route. */
   notes: string[];
+  /** Section id of this route's walkthrough on the published guide. */
+  docAnchor: string;
+  /** Two or three words, for links and lists where the full label is too long. */
+  shortLabel: string;
   /** True when a phone can use this route as-is. */
   mobileSafe: boolean;
 }
@@ -40,6 +44,8 @@ export const REMOTE_PRESETS: RemotePreset[] = [
       "Works on desktop, and on a phone only if Hermes itself runs on that phone (for example Termux on Android).",
       "The API server stays unreachable from the network — the safest default.",
     ],
+    docAnchor: "same",
+    shortLabel: "Same machine",
     mobileSafe: true,
   },
   {
@@ -58,6 +64,8 @@ export const REMOTE_PRESETS: RemotePreset[] = [
       "Desktop only. iOS and Android refuse plain-HTTP requests to another machine, so phones need one of the HTTPS routes below.",
       "Only do this on a network you trust: the API server is a full agent with terminal access.",
     ],
+    docAnchor: "lan",
+    shortLabel: "LAN (plain HTTP)",
     mobileSafe: false,
   },
   {
@@ -72,6 +80,8 @@ export const REMOTE_PRESETS: RemotePreset[] = [
       "Install Tailscale and sign in on the phone too — the address only resolves inside your tailnet.",
       "The URL is printed by `tailscale serve`; Tailscale issues the certificate, so no extra proxy is needed.",
     ],
+    docAnchor: "tailscale",
+    shortLabel: "Tailscale",
     mobileSafe: true,
   },
   {
@@ -105,6 +115,8 @@ export const REMOTE_PRESETS: RemotePreset[] = [
       "Client side: install the WireGuard app (App Store, Play Store, wireguard.com/install), import a [Peer] block whose Endpoint is the host's public address, and set PersistentKeepalive = 25 so the NAT hole stays open.",
       "The VPN reaches the whole host, not just the API server: keep AllowedIPs tight (10.8.0.0/24), open only UDP 51820, and treat the private keys like passwords.",
     ],
+    docAnchor: "wireguard",
+    shortLabel: "WireGuard VPN",
     mobileSafe: false,
   },
   {
@@ -128,6 +140,8 @@ export const REMOTE_PRESETS: RemotePreset[] = [
       "Put Cloudflare Access (service token) in front of it. The API key alone guards a full agent with terminal access.",
       "The Access headers only apply when Access protects the hostname; press Insert below and fill in the real id and secret.",
     ],
+    docAnchor: "cloudflare",
+    shortLabel: "Cloudflare Tunnel",
     mobileSafe: true,
   },
   {
@@ -149,6 +163,8 @@ export const REMOTE_PRESETS: RemotePreset[] = [
       "Do not use `--basic-auth`: its Authorization header would replace your Hermes API key, and the plugin would lose the key it needs.",
       "Anyone with the URL can reach the API server, so keep the session short and use a reserved domain you can shut down.",
     ],
+    docAnchor: "ngrok",
+    shortLabel: "ngrok",
     mobileSafe: true,
   },
   {
@@ -168,6 +184,8 @@ export const REMOTE_PRESETS: RemotePreset[] = [
       "Keep the API server bound to 127.0.0.1 and let the proxy be the only way in.",
       "If the proxy wants its own credentials, put them in Extra request headers (a header named Authorization replaces the API key).",
     ],
+    docAnchor: "proxy",
+    shortLabel: "TLS reverse proxy",
     mobileSafe: true,
   },
 ];

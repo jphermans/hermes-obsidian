@@ -467,6 +467,14 @@ export class HermesSettingTab extends PluginSettingTab {
       card.createEl("p", { cls: "setting-item-description", text: note });
     }
 
+    const routeDoc = card.createEl("a", {
+      cls: "hermes-guide-link",
+      text: "Full guide for this route: " + preset.shortLabel + " ↗",
+    });
+    routeDoc.setAttr("href", GUIDE_URL + "#" + preset.docAnchor);
+    routeDoc.setAttr("target", "_blank");
+    routeDoc.setAttr("rel", "noopener");
+
     const buttons = card.createDiv({ cls: "hermes-notes-buttons" });
     if (preset.urlTemplate) {
       const useTemplate = buttons.createEl("button", { text: "Use " + preset.urlTemplate });
@@ -784,34 +792,9 @@ export class HermesSettingTab extends PluginSettingTab {
     steps.createEl("h3", { text: "3 · Reach it from anywhere (phones, tablets, other networks)" });
     steps.createEl("p", {
       text:
-        "Mobile operating systems refuse plain HTTP to another machine, so a phone cannot use http://192.168.x.x:8642. Reach Hermes over HTTPS — any of these keeps the plugin identical on desktop and mobile:",
+        "Mobile operating systems refuse plain HTTP to another machine, so a phone cannot use http://192.168.x.x:8642 — that is why every remote route below is HTTPS. Pick yours in the dropdown of How do you reach Hermes? above: it shows that route's commands, its URL shape, the headers it needs and a Test this route button, which is why this page no longer carries every recipe at once.",
     });
-    const remote = steps.createEl("ul", { cls: "hermes-guide-list" });
-    remote.createEl("li", {
-      text: "Tailscale (easiest, nothing exposed to the internet): install it on the Hermes host and on the phone, run the command below, and paste the https://…ts.net address it prints.",
-    });
-    remote.createEl("li", {
-      text: "Cloudflare Tunnel: a public HTTPS hostname without opening a port. With Cloudflare Access in front, paste the service token headers into Extra request headers.",
-    });
-    remote.createEl("li", {
-      text: "A TLS reverse proxy on a VPS or the same host — for example Caddy, which gets a certificate automatically.",
-    });
-    this.codeBlock(
-      steps,
-      [
-        "# Tailscale — HTTPS address for every device on your tailnet",
-        "tailscale serve --bg 8642",
-        "",
-        "# Cloudflare Tunnel — quick public HTTPS URL",
-        "cloudflared tunnel --url http://127.0.0.1:8642",
-        "",
-        "# Caddy on the host (Caddyfile): automatic HTTPS in front of the API server",
-        "hermes.example.com {",
-        "    reverse_proxy 127.0.0.1:8642",
-        "}",
-      ],
-      "Copy recipes"
-    );
+    this.renderRouteLinks(steps);
     const safety = steps.createEl("ul", { cls: "hermes-guide-list" });
     safety.createEl("li", {
       text: "Keep the API server bound to 127.0.0.1 and let the tunnel or proxy be the only way in — that way the port is never open directly.",
@@ -826,69 +809,13 @@ export class HermesSettingTab extends PluginSettingTab {
     steps.createEl("h3", { text: "3b · A permanent URL that survives restarts" });
     steps.createEl("p", {
       text:
-        "The recipes above give you a URL for right now — a quick tunnel changes it on every restart. For a URL you paste into the field once and forget, use a named Cloudflare tunnel or an ngrok static domain, and run either one as a service:",
+        "A quick tunnel hands you a URL for right now and a different one after every restart, which means editing this page again. For a URL you paste once, use a named Cloudflare tunnel or an ngrok static domain — each has its walkthrough, including the install and the service step for your system:",
     });
-    this.codeBlock(
-      steps,
-      [
-        "# Cloudflare Tunnel (named) — one hostname forever, needs a domain on Cloudflare",
-        "# install cloudflared on the Hermes host:",
-        "#   macOS    brew install cloudflared",
-        "#   Windows  winget install --id Cloudflare.cloudflared -e",
-        "#   Debian/Ubuntu/RHEL/Arch: apt / yum / pacman from Cloudflare's repo — see the web guide",
-        "cloudflared tunnel login                      # every system, then:",
-        "cloudflared tunnel create hermes",
-        "cloudflared tunnel route dns hermes hermes.example.com",
-        "#   ~/.cloudflared/config.yml:",
-        "#     tunnel: <UUID from create>",
-        "#     credentials-file: /Users/you/.cloudflared/<UUID>.json",
-        "#     ingress:",
-        "#       - hostname: hermes.example.com",
-        "#         service: http://127.0.0.1:8642",
-        "#       - service: http_status:404",
-        "cloudflared tunnel run hermes                  # test, then Ctrl-C",
-        "cloudflared service install                    # macOS: launch agent (sudo → at boot)",
-        "sudo launchctl start com.cloudflare.cloudflared",
-        "sudo cloudflared service install               # Linux: systemd",
-        "#   sudo makes $HOME=/root — add --config /home/<user>/.cloudflared/config.yml if needed",
-        "sudo systemctl start cloudflared",
-        "cloudflared.exe service install                # Windows: runs as SYSTEM — see the web guide",
-        "",
-        "# ngrok — claim the static domain first (dashboard → Domains → New Domain)",
-        "brew install ngrok",
-        "ngrok config add-authtoken <token>",
-        "#   ~/Library/Application Support/ngrok/ngrok.yml (agent v3):",
-        "#     version: 3",
-        "#     agent: { authtoken: <token> }",
-        "#     endpoints:",
-        "#       - name: hermes",
-        "#         url: https://your-name.ngrok.app",
-        "#         upstream: { url: 8642 }",
-        "ngrok config check && ngrok start hermes        # test it",
-        "ngrok service install --config \"$HOME/Library/Application Support/ngrok/ngrok.yml\"",
-        "ngrok service start",
-        "",
-        "# and behind the URL, make these permanent too",
-        "hermes gateway install && hermes gateway start  # not a terminal you keep open",
-        "sudo pmset -a sleep 0                           # host must not sleep (Linux: loginctl enable-linger)",
-      ],
-      "Copy commands"
-    );
-    const permanent = steps.createEl("ul", { cls: "hermes-guide-list" });
-    permanent.createEl("li", {
-      text: "WireGuard (no third party at all): install wireguard on the host — apt install wireguard, dnf install wireguard-tools, pacman -S wireguard-tools, or the WireGuard app on macOS/Windows — generate a key pair with wg genkey | wg pubkey, put the server's own key and one [Peer] block per device in /etc/wireguard/wg0.conf, then wg-quick up wg0 and systemctl enable wg-quick@wg0. Open UDP 51820 only, and set API_SERVER_HOST to the VPN address (10.8.0.1) in ~/.hermes/.env so the API server is reachable over the tunnel. Desktop works with http://10.8.0.1:8642; a phone still needs HTTPS in front, and CGNAT blocks an inbound endpoint entirely.",
-    });
-    permanent.createEl("li", {
-      text: "cloudflared installs on every system: brew on macOS, winget install --id Cloudflare.cloudflared -e on Windows (or the .msi), apt/yum/pacman from Cloudflare's repository on Linux, and a Docker image. Running it as a service differs per system too — launchd on macOS, systemd on Linux, and a Windows service whose config must live in the SYSTEM account's profile. The web guide has the exact commands for each.",
-    });
-    permanent.createEl("li", {
-      text: "Cloudflare Access: create a service token (Zero Trust → Access controls → Service credentials → Service Tokens), put an Access application in front of the hostname with a Service Auth policy, and paste the two headers it shows you into Extra request headers. A plain Allow policy still asks for an identity provider login and will fail this plugin.",
-    });
-    permanent.createEl("li", {
-      text: "ngrok: the free-tier interstitial is skipped by the ngrok-skip-browser-warning: true header in Extra request headers. ngrok does not let you add that header through traffic policy on a free account, so it has to come from the client. Never use ngrok --basic-auth — its Authorization header would replace your Hermes API key.",
-    });
-    permanent.createEl("li", {
-      text: "Verify from outside your network: curl -sS https://your-host/health -H \"Authorization: Bearer <key>\", then press Test connection here. A tunnel is the only way in, so keep the API server itself bound to 127.0.0.1.",
+    this.renderDocLinks(steps, ["cloudflare", "ngrok", "wireguard"]);
+    steps.createEl("p", {
+      cls: "setting-item-description",
+      text:
+        "Behind the URL, make the rest permanent too: hermes gateway install && hermes gateway start (not a terminal you keep open), the tunnel itself as a service, and a host that does not sleep. WireGuard is the third option if you would rather not involve a third party at all — desktop works with it as-is, while a phone still needs HTTPS in front.",
     });
 
     steps.createEl("h3", { text: "4 · Streaming (optional)" });
@@ -917,37 +844,27 @@ export class HermesSettingTab extends PluginSettingTab {
     this.codeBlock(
       steps,
       [
-        "hermes profile create obsidian      # profile + an `obsidian` command",
-        "obsidian setup                      # its own model and provider keys",
-        "",
-        "# then in ~/.hermes/profiles/obsidian/.env (an env var, not config.yaml):",
-        "API_SERVER_ENABLED=true",
-        "API_SERVER_KEY=my-vault-key",
-        "API_SERVER_PORT=8643",
-        "",
-        "obsidian gateway start",
+        "hermes profile create obsidian      # + an `obsidian` command",
+        "# ~/.hermes/profiles/obsidian/.env:  API_SERVER_ENABLED=true",
+        "#   API_SERVER_KEY=my-vault-key  API_SERVER_PORT=8643",
+        "obsidian setup && obsidian gateway start",
       ],
       "Copy commands"
     );
     const profileNotes = steps.createEl("ul", { cls: "hermes-guide-list" });
     profileNotes.createEl("li", {
-      text: "Create the profile on the Hermes host first — the plugin only sends requests, so it cannot create one and cannot check whether one exists. Until the profile exists and its API server is listening you will see 404 (wrong port, or a prefix for a profile that is not being served) or 401 (a key belonging to another profile). You can start on your default profile today and switch later — the connection is only settings.",
+      text: "Create the profile on the Hermes host first — the plugin only sends requests, so it cannot create one or check for one. Until it exists and its API server is listening you will see 404 (wrong port or prefix) or 401 (a key from another profile). No shell handy? hermes dashboard → Profiles does it, and you can start on your default profile today and switch later.",
     });
     profileNotes.createEl("li", {
-      text: "No shell handy? hermes dashboard → Profiles creates, activates and deletes profiles; the desktop app has the same page.",
+      text: "Route to it either way: its own port (URL http://<host>:8643, that profile's key, empty prefix), or one gateway with gateway.multiplex_profiles true on the default profile and the prefix obsidian → /p/obsidian/v1. Under multiplexing a secondary profile must not run its own gateway, and two profiles that both leave API_SERVER_PORT unset collide on 8642.",
     });
-    profileNotes.createEl("li", {
-      text: "Its own port (simplest): put http://<host>:8643 and that profile's key in the fields above, and leave the profile prefix empty.",
+    const profileDoc = profileNotes.createEl("li", {
+      text: "You will know it routed when /v1/models advertises the profile name — it appears in the chat panel's model dropdown. Full walkthrough: ",
     });
-    profileNotes.createEl("li", {
-      text: "One gateway for several profiles: run `hermes config set gateway.multiplex_profiles true` on the default profile and restart it, then keep the URL as it is and set the profile prefix to obsidian. Requests go to /p/obsidian/v1. In this mode a secondary profile must not run its own gateway.",
-    });
-    profileNotes.createEl("li", {
-      text: "You will know it worked when /v1/models advertises the profile name (obsidian) — it appears in the model dropdown in the chat panel.",
-    });
-    profileNotes.createEl("li", {
-      text: "Two profiles that both leave API_SERVER_PORT unset both try to bind 8642, so give each profile its own port.",
-    });
+    const profileLink = profileDoc.createEl("a", { cls: "hermes-guide-link", text: "keeping vault work in its own profile ↗" });
+    profileLink.setAttr("href", GUIDE_URL + "#profile");
+    profileLink.setAttr("target", "_blank");
+    profileLink.setAttr("rel", "noopener");
 
     const about = containerEl.createDiv({ cls: "hermes-callout" });
     about.createEl("p", {
@@ -1127,6 +1044,29 @@ export class HermesSettingTab extends PluginSettingTab {
     if (!answer) return;
     await this.plugin.saveCurrentAsProfile(answer.prompt);
     this.display();
+  }
+
+  // --- guide links ---------------------------------------------------------
+
+  /** Deep links to one or more routes' walkthroughs on the published guide. */
+  private renderDocLinks(parent: HTMLElement, ids: string[]): void {
+    const row = parent.createDiv({ cls: "hermes-guide-links" });
+    for (const id of ids) {
+      const preset = REMOTE_PRESETS.find((entry) => entry.id === id);
+      if (!preset) continue;
+      const link = row.createEl("a", { cls: "hermes-guide-link", text: preset.shortLabel + " ↗" });
+      link.setAttr("href", GUIDE_URL + "#" + preset.docAnchor);
+      link.setAttr("target", "_blank");
+      link.setAttr("rel", "noopener");
+    }
+  }
+
+  /** Every route as a link — the dropdown above carries the commands. */
+  private renderRouteLinks(parent: HTMLElement): void {
+    this.renderDocLinks(
+      parent,
+      REMOTE_PRESETS.map((preset) => preset.id)
+    );
   }
 
   // --- prompt box ----------------------------------------------------------

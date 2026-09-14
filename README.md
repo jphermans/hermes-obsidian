@@ -70,8 +70,10 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 > **Complete setup guide for every instance — same machine, LAN, Tailscale, Cloudflare Tunnel, ngrok, a TLS reverse proxy, a dedicated profile, or Hermes on the phone itself: <https://jphermans.github.io/hermes-obsidian/>**
 >
 > It is the long-form version of the sections below, with a copy button on every command and a verify checklist that walks outward from the server. The same guide is in the plugin: **Settings → Hermes Agent Notes → Setup guide**.
+>
+> The setup page stays short on purpose: the per-route recipes live behind the **How do you reach Hermes?** dropdown (that route's commands, URL shape, headers and a *Test this route* button — plus a link to its walkthrough), and the guide itself lists the routes as links instead of printing every recipe at once.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.25** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.26** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 

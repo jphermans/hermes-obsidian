@@ -8,6 +8,7 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import * as hermes from "./.build/tests.mjs";
 
 let passed = 0;
@@ -476,6 +477,20 @@ test("the WireGuard preset is honest about phones and the ports it needs", () =>
   );
   assert.ok(wireguard.notes.join(" ").includes("PersistentKeepalive"), "must mention the NAT keepalive");
   assert.equal(wireguard.requiredHeaders.length, 0, "no headers to add for a VPN");
+});
+
+test("every route links to a walkthrough that actually exists", () => {
+  const page = readFileSync(new URL("../docs/index.html", import.meta.url), "utf8");
+  const anchors = new Set([...page.matchAll(/id="([a-z0-9-]+)"/g)].map((match) => match[1]));
+  const seenAnchors = new Set();
+  for (const preset of hermes.REMOTE_PRESETS) {
+    assert.ok(preset.docAnchor && preset.docAnchor.length > 2, preset.id + " has no docAnchor");
+    assert.ok(preset.shortLabel && preset.shortLabel.length > 2, preset.id + " has no shortLabel");
+    assert.ok(preset.shortLabel.length <= 22, preset.id + " shortLabel is too long for a link: " + preset.shortLabel);
+    assert.ok(anchors.has(preset.docAnchor), preset.id + " points at a missing section: #" + preset.docAnchor);
+    assert.ok(!seenAnchors.has(preset.docAnchor), "two routes share the anchor #" + preset.docAnchor);
+    seenAnchors.add(preset.docAnchor);
+  }
 });
 
 test("presetFor falls back to local for an unknown mode", () => {
