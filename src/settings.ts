@@ -98,6 +98,7 @@ export class HermesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("API server URL")
+      .setClass("hermes-wide")
       .setDesc("Root of the Hermes API server — no /v1 suffix. Local default: http://127.0.0.1:8642")
       .addText((text) =>
         text
@@ -112,6 +113,7 @@ export class HermesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Profile prefix")
+      .setClass("hermes-wide")
       .setDesc("Only when the Hermes gateway serves several profiles (gateway.multiplex_profiles). Requests then go to /p/<profile>/v1. Leave empty for the default profile.")
       .addText((text) =>
         text
@@ -126,13 +128,14 @@ export class HermesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Extra request headers")
+      .setClass("hermes-wide")
       .setDesc(
         "One Name: value per line. Needed when the API server sits behind Cloudflare Access, an authenticating proxy or a gateway that wants its own headers. A header named Authorization replaces the API key above."
       )
       .addTextArea((text) => {
         text.setPlaceholder("CF-Access-Client-Id: xxxx.access\nCF-Access-Client-Secret: yyyy");
         text.setValue(this.plugin.settings.extraHeaders);
-        text.inputEl.rows = 3;
+        text.inputEl.rows = 6;
         text.inputEl.addClass("hermes-headers-input");
         text.onChange((value) => {
           this.plugin.settings.extraHeaders = value;
@@ -143,6 +146,7 @@ export class HermesSettingTab extends PluginSettingTab {
 
     const keySetting = new Setting(containerEl)
       .setName("API key")
+      .setClass("hermes-wide")
       .setDesc("Must equal API_SERVER_KEY in the Hermes .env. Stored in this vault's plugin data, so keep the vault private.")
       .addText((text) => {
         text.inputEl.type = "password";
@@ -168,6 +172,7 @@ export class HermesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Model")
+      .setClass("hermes-wide")
       .setDesc(
         "Hermes normally uses its own configured default model and ignores this name. Fill in a provider below to make this model take effect, or set gateway.platforms.api_server.direct_model_requests on the host."
       )
@@ -214,6 +219,7 @@ export class HermesSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Provider override")
+      .setClass("hermes-wide")
       .setDesc("Optional Hermes provider slug (for example openrouter, anthropic, minimax). Sent with every request so the model above is honoured.")
       .addText((text) =>
         text
@@ -655,7 +661,7 @@ export class HermesSettingTab extends PluginSettingTab {
     });
 
     const input = containerEl.createEl("textarea", { cls: "hermes-prompt-input" });
-    input.rows = 3;
+    input.rows = 6;
     input.placeholder = "Ask Hermes anything…";
     input.setAttr("spellcheck", "false");
     input.setAttr("autocomplete", "off");

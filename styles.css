@@ -156,21 +156,74 @@ body.theme-light .hermes-statusbar {
   color: var(--hermes-warn);
 }
 
+/* Roomy rows: for fields where people type real values (URLs, keys, header
+   blocks), the control moves under the description and uses the full width of
+   the settings pane instead of a narrow right-hand column. */
+.hermes-settings .setting-item.hermes-wide {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.hermes-settings .setting-item.hermes-wide .setting-item-info {
+  margin-right: 0;
+}
+
+.hermes-settings .setting-item.hermes-wide .setting-item-control {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.hermes-settings .setting-item.hermes-wide .setting-item-control input[type="text"],
+.hermes-settings .setting-item.hermes-wide .setting-item-control input[type="password"] {
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
+}
+
+.hermes-settings .setting-item-control input[type="text"],
+.hermes-settings .setting-item-control input[type="password"],
+.hermes-settings .setting-item-control textarea {
+  min-height: 42px;
+  padding: 10px 12px;
+  font-size: var(--font-ui-medium);
+  line-height: 1.45;
+  border-radius: var(--radius-s);
+}
+
+.hermes-settings .setting-item:not(.hermes-wide) .setting-item-control input[type="text"],
+.hermes-settings .setting-item:not(.hermes-wide) .setting-item-control input[type="password"] {
+  min-width: 280px;
+}
+
+.hermes-settings .setting-item-control textarea {
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+}
+
 .hermes-headers-input {
   width: 100%;
+  min-height: 140px;
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
+  line-height: 1.6;
+  tab-size: 4;
 }
 
 .hermes-settings .hermes-prompt-input {
   width: 100%;
+  min-height: 168px;
   border-radius: var(--radius-s);
   border: 1px solid var(--hermes-border);
   background: var(--hermes-surface-strong);
   color: var(--text-normal);
   font-family: var(--font-text);
-  font-size: var(--font-ui-small);
-  padding: 8px 10px;
+  font-size: var(--font-ui-medium);
+  line-height: 1.5;
+  padding: 12px 14px;
   resize: vertical;
 }
 
@@ -615,8 +668,16 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   .hermes-notes-modal .hermes-notes-textarea,
   .hermes-notes-modal .hermes-notes-raw,
   .hermes-chat-input,
-  .hermes-settings .hermes-prompt-input {
+  .hermes-settings .hermes-prompt-input,
+  .hermes-settings .setting-item-control input[type="text"],
+  .hermes-settings .setting-item-control input[type="password"],
+  .hermes-settings .setting-item-control textarea {
     font-size: 16px;
+  }
+
+  .hermes-settings .setting-item-control textarea,
+  .hermes-headers-input {
+    min-height: 150px;
   }
 
   .hermes-notes-body,
