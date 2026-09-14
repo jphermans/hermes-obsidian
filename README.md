@@ -166,6 +166,105 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 
 **Two gotchas on these routes.** Cloudflare Tunnel quick tunnels get a new random URL on every restart — use a named tunnel for anything permanent, and put Cloudflare Access (service token) in front of it. ngrok's free tier shows an interstitial page to browsers, which the suggested `ngrok-skip-browser-warning: true` header skips; do **not** use `ngrok --basic-auth`, because its `Authorization` header would replace your Hermes API key.
 
+### A permanent URL: Cloudflare Tunnel (named)
+
+A *named* tunnel keeps one hostname forever and runs as a background service, so the plugin's URL never changes. It needs a domain on Cloudflare (the free plan is enough).
+
+```bash
+# 1. Install and authenticate cloudflared on the Hermes host
+brew install cloudflared                  # Linux: see Cloudflare's apt/rpm packages
+cloudflared tunnel login                  # browser: pick the zone to authorise
+
+# 2. Create the tunnel and point a hostname at it
+cloudflared tunnel create hermes          # prints the tunnel UUID and credentials file
+cloudflared tunnel route dns hermes hermes.example.com
+```
+
+```yaml
+# ~/.cloudflared/config.yml — name → UUID, credentials, and what to proxy
+tunnel: 7b9c1f38-2f4c-4a2e-9c11-3f0a5b6d7e80
+credentials-file: /Users/you/.cloudflared/7b9c1f38-2f4c-4a2e-9c11-3f0a5b6d7e80.json
+ingress:
+  - hostname: hermes.example.com
+    service: http://127.0.0.1:8642
+  - service: http_status:404
+```
+
+```bash
+# 3. Test it, then make it permanent
+cloudflared tunnel run hermes             # Ctrl-C once the hostname answers
+
+cloudflared service install               # launch agent: starts at login
+sudo cloudflared service install          # or launch daemon: starts at boot
+sudo launchctl start com.cloudflare.cloudflared
+cloudflared tunnel info hermes            # status and connections
+```
+
+Logs land in `/Library/Logs/com.cloudflare.cloudflared.{out,err}.log`. If you would rather not use the CLI, the dashboard route (**Networking → Tunnels → Create a tunnel → Published application**) does the same thing and the connector it tells you to install runs as a service too.
+
+**Put Cloudflare Access in front of it** so the hostname is not open to the internet. In **Zero Trust → Access controls → Service credentials → Service Tokens**, create a token (**Service Token Duration** — nothing lasts forever, and Cloudflare can alert you a week before it expires), then create an Access application for the hostname with a policy whose action is **Service Auth** — a plain *Allow* policy will still ask for an identity provider login and fail a non-browser client. Paste the two headers it shows you into the plugin's *Extra request headers*:
+
+```
+CF-Access-Client-Id: 88bf3b6d86161464f6509f7219099e57.access
+CF-Access-Client-Secret: bdd31cbc4dec990953e39163fbbb194c93313ca9f0a6e420346af9d326b1d2a5
+```
+
+### A permanent URL: ngrok
+
+ngrok gives your account a **static domain**, which is what makes it usable as a permanent URL — claim it in the dashboard under **Domains → New Domain**, then use it everywhere instead of the random quick-tunnel URL.
+
+```bash
+brew install ngrok
+ngrok config add-authtoken <your-authtoken>       # from dashboard.ngrok.com → Your Authtoken
+```
+
+```yaml
+# ~/Library/Application Support/ngrok/ngrok.yml — agent v3 config (tunnels: is deprecated)
+version: 3
+agent:
+  authtoken: <your-authtoken>
+endpoints:
+  - name: hermes
+    url: https://your-name.ngrok.app
+    upstream:
+      url: 8642
+```
+
+```bash
+ngrok config check                        # validates the file
+ngrok start hermes                        # test it
+
+ngrok service install --config "$HOME/Library/Application Support/ngrok/ngrok.yml"
+ngrok service start                       # now it survives reboots, like the Cloudflare service
+```
+
+The free-tier interstitial page is skipped by the plugin's `ngrok-skip-browser-warning: true` header under *Extra request headers* — ngrok does **not** let you add that header through traffic policy on a free account, so it has to come from the client. And never `ngrok --basic-auth`: its `Authorization` header would replace your Hermes API key.
+
+### Keeping the whole chain up
+
+A permanent URL only helps if everything behind it is also permanent:
+
+```bash
+# 1. The Hermes gateway itself as a service (not a terminal you have to keep open)
+hermes gateway install && hermes gateway start
+hermes gateway status                     # per profile: hermes -p obsidian gateway status
+
+# 2. The tunnel as a service — cloudflared service install / ngrok service start (above)
+
+# 3. The host must not sleep: an always-on machine is the reliable answer
+sudo pmset -a sleep 0                     # macOS, all power sources
+# Linux: systemd services keep running across logouts once lingering is on
+sudo loginctl enable-linger "$USER"
+```
+
+Keep the API server itself bound to `127.0.0.1` — the tunnel is then the only way in. Verify from outside the network, not just locally:
+
+```bash
+curl -sS https://hermes.example.com/health -H "Authorization: Bearer <your-key>"
+```
+
+Then press **Test connection** in the plugin; the connection card reports the round trip, and **Test this route** under *How do you reach Hermes?* checks the route you picked.
+
 **Security.** The key protects a full agent with terminal access on that machine. Prefer Tailscale or Cloudflare Access over a bare public port, and rotate `API_SERVER_KEY` if it ever leaks.
 
 ## Keeping vault work in its own Hermes profile
@@ -376,6 +475,8 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **No model in the dropdown** | Harmless: `/v1/models` advertises one agent name. Press *Test connection* and use that name. |
 | **Streaming was refused** | Add the `API_SERVER_CORS_ORIGINS` line above and restart the gateway, or turn streaming off. |
 | **Phone cannot reach the instance at all** | Plain HTTP to another machine is blocked on mobile. Use HTTPS — Tailscale, Cloudflare Tunnel or a TLS reverse proxy. Loopback (`http://127.0.0.1:…`, Hermes running on the same device) is the one exception. |
+| **The URL changes every time I restart the tunnel** | That is a quick tunnel. A *named* Cloudflare tunnel (`cloudflared tunnel create` + `tunnel route dns` + `service install`) and an ngrok **static domain** both keep one URL, and both run as services — see [A permanent URL](#a-permanent-url-cloudflare-tunnel-named). |
+| **The tunnel is up but the plugin still fails** | Check the layers in this order: `hermes gateway status` (the API server itself), the tunnel service (`cloudflared tunnel info hermes`, or `ngrok` service status), then the host — a sleeping machine drops the tunnel. `curl https://your-host/health` from a phone on mobile data tells you which layer is down. |
 | **On a phone, `127.0.0.1` / `localhost` will not save** | Deliberate: on a phone that address points at the phone itself, so nothing could reach Hermes. Use your Tailscale/Cloudflare/ngrok URL. If Hermes really does run on that device (Termux on Android), press *Save anyway* under the field. |
 | **HTTP 403 behind Cloudflare Access** | Add the `CF-Access-Client-Id` / `CF-Access-Client-Secret` service token headers under *Extra request headers*. |
 | **No tokens appear / the answer arrives all in one piece** | Streaming is off by default, or Hermes is not allowing this app's origin, or something between you and it is buffering. Press **Verify streaming** in the settings — it reports which of the four causes it is, and the reason is also written to the error log. |

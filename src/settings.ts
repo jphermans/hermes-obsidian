@@ -801,6 +801,60 @@ export class HermesSettingTab extends PluginSettingTab {
       text: "Plain LAN HTTP (API_SERVER_HOST=0.0.0.0 plus http://192.168.x.x:8642) works on desktop only; phones will refuse it.",
     });
 
+    steps.createEl("h3", { text: "3b · A permanent URL that survives restarts" });
+    steps.createEl("p", {
+      text:
+        "The recipes above give you a URL for right now — a quick tunnel changes it on every restart. For a URL you paste into the field once and forget, use a named Cloudflare tunnel or an ngrok static domain, and run either one as a service:",
+    });
+    this.codeBlock(
+      steps,
+      [
+        "# Cloudflare Tunnel (named) — one hostname forever, needs a domain on Cloudflare",
+        "brew install cloudflared && cloudflared tunnel login",
+        "cloudflared tunnel create hermes",
+        "cloudflared tunnel route dns hermes hermes.example.com",
+        "#   ~/.cloudflared/config.yml:",
+        "#     tunnel: <UUID from create>",
+        "#     credentials-file: /Users/you/.cloudflared/<UUID>.json",
+        "#     ingress:",
+        "#       - hostname: hermes.example.com",
+        "#         service: http://127.0.0.1:8642",
+        "#       - service: http_status:404",
+        "cloudflared tunnel run hermes          # test, then Ctrl-C",
+        "cloudflared service install            # launch agent (sudo → launch daemon at boot)",
+        "sudo launchctl start com.cloudflare.cloudflared",
+        "",
+        "# ngrok — claim the static domain first (dashboard → Domains → New Domain)",
+        "brew install ngrok",
+        "ngrok config add-authtoken <token>",
+        "#   ~/Library/Application Support/ngrok/ngrok.yml (agent v3):",
+        "#     version: 3",
+        "#     agent: { authtoken: <token> }",
+        "#     endpoints:",
+        "#       - name: hermes",
+        "#         url: https://your-name.ngrok.app",
+        "#         upstream: { url: 8642 }",
+        "ngrok config check && ngrok start hermes        # test it",
+        "ngrok service install --config \"$HOME/Library/Application Support/ngrok/ngrok.yml\"",
+        "ngrok service start",
+        "",
+        "# and behind the URL, make these permanent too",
+        "hermes gateway install && hermes gateway start  # not a terminal you keep open",
+        "sudo pmset -a sleep 0                           # host must not sleep (Linux: loginctl enable-linger)",
+      ],
+      "Copy commands"
+    );
+    const permanent = steps.createEl("ul", { cls: "hermes-guide-list" });
+    permanent.createEl("li", {
+      text: "Cloudflare Access: create a service token (Zero Trust → Access controls → Service credentials → Service Tokens), put an Access application in front of the hostname with a Service Auth policy, and paste the two headers it shows you into Extra request headers. A plain Allow policy still asks for an identity provider login and will fail this plugin.",
+    });
+    permanent.createEl("li", {
+      text: "ngrok: the free-tier interstitial is skipped by the ngrok-skip-browser-warning: true header in Extra request headers. ngrok does not let you add that header through traffic policy on a free account, so it has to come from the client. Never use ngrok --basic-auth — its Authorization header would replace your Hermes API key.",
+    });
+    permanent.createEl("li", {
+      text: "Verify from outside your network: curl -sS https://your-host/health -H \"Authorization: Bearer <key>\", then press Test connection here. A tunnel is the only way in, so keep the API server itself bound to 127.0.0.1.",
+    });
+
     steps.createEl("h3", { text: "4 · Streaming (optional)" });
     steps.createEl("p", {
       text:
