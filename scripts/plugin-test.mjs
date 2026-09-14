@@ -173,6 +173,26 @@ await test("the automatic backup fires after a change, debounced", async () => {
   assert.ok(plugin.lastBackupAt > 0, "lastBackupAt was not recorded");
 });
 
+await test("an answer saved as a note drops the assistant's caveat", async () => {
+  const plugin = await makePlugin({ stripCaveats: true, defaultFolder: "" });
+  const answer = "The tiles arrive on Friday.\n\nLet me know if you want me to expand this.";
+  await plugin.saveTextAsNote(answer, "Tiles");
+  const saved = app.vault.getMarkdownFiles().filter((file) => file.basename === "Tiles");
+  assert.equal(saved.length, 1, "the note was not created");
+  const content = await app.vault.read(saved[0]);
+  assert.ok(content.indexOf("tiles arrive on Friday") >= 0, content);
+  assert.ok(content.indexOf("Let me know") < 0, "the caveat was written into the note: " + content);
+});
+
+await test("with caveat stripping off, the answer is saved verbatim", async () => {
+  const plugin = await makePlugin({ stripCaveats: false, defaultFolder: "" });
+  await plugin.saveTextAsNote("Body text.\n\nLet me know if you want more.", "Verbatim");
+  const saved = app.vault.getMarkdownFiles().filter((file) => file.basename === "Verbatim");
+  assert.equal(saved.length, 1);
+  const content = await app.vault.read(saved[0]);
+  assert.ok(content.indexOf("Let me know") >= 0, "stripping is off, the text must be untouched");
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");

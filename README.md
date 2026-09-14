@@ -181,6 +181,8 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 | **Show detected vault conventions** | See exactly what the plugin learned — and rescan it. |
 | **Rescan vault conventions** | Force a fresh analysis. |
 
+**Answers going into a note lose the assistant's own remarks.** When you use *Insert*, *Append* or *Save as note*, trailing "Let me know if you want more…" / "Note: I can only see the conventions you shared" lines — and a conversational "Sure, here's…" opener — are removed before the text lands in the note, and the notice tells you how many lines were dropped. It is conservative by design: a factual `Note: the warranty expires in 2029.` survives, code blocks are never touched, and *Copy* always gives the raw answer. Turn it off with **Strip caveats from answers** in the settings. Generated notes are never touched by this.
+
 ## Following Obsidian's rules
 
 A model that knows Markdown still gets Obsidian wrong, so the plugin does two things.

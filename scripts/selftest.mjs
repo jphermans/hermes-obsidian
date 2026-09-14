@@ -553,6 +553,53 @@ test("settings file paths are predictable", () => {
   assert.equal(hermes.settingsExportPath("/13.00 AI/"), "13.00 AI/Hermes Agent Notes settings.json");
 });
 
+// --- caveat stripping ------------------------------------------------------
+
+test("stripCaveats removes an assistant remark at the end of an answer", () => {
+  const answer = "The basement needs a dehumidifier before the plaster goes in.\n\nLet me know if you would like me to turn this into a checklist.";
+  const cleaned = hermes.stripCaveats(answer);
+  assert.equal(cleaned.text, "The basement needs a dehumidifier before the plaster goes in.");
+  assert.equal(cleaned.removed.length, 1);
+
+  const note = hermes.stripCaveats("Kitchen renovation starts in April.\n\nNote: I can only see the vault conventions you shared, not your actual files.");
+  assert.equal(note.text, "Kitchen renovation starts in April.");
+  assert.equal(note.removed.length, 1);
+});
+
+test("stripCaveats removes a caveat sentence inside the last paragraph", () => {
+  const cleaned = hermes.stripCaveats("Use [[Boiler service]] for the maintenance log. Keep in mind that I have not verified the dates you gave me.");
+  assert.equal(cleaned.text, "Use [[Boiler service]] for the maintenance log.");
+  assert.equal(cleaned.removed.length, 1);
+});
+
+test("stripCaveats removes a conversational opener", () => {
+  const cleaned = hermes.stripCaveats("Sure, here's the summary:\n\n# Kitchen renovation\n\nThe tiles arrive on Friday.");
+  assert.equal(cleaned.text, "# Kitchen renovation\n\nThe tiles arrive on Friday.");
+  assert.equal(cleaned.removed.length, 1);
+});
+
+test("stripCaveats never eats real note content", () => {
+  // a factual "Note:" line with no assistant voice stays
+  const factual = hermes.stripCaveats("The boiler was installed in 2009.\n\nNote: the warranty expires in 2029.");
+  assert.equal(factual.text, "The boiler was installed in 2009.\n\nNote: the warranty expires in 2029.");
+  assert.equal(factual.removed.length, 0);
+
+  // a trailing code block is left alone
+  const withCode = hermes.stripCaveats("Run this:\n\n```bash\nssh pi5-ai\n```");
+  assert.equal(withCode.removed.length, 0);
+  assert.ok(withCode.text.indexOf("ssh pi5-ai") >= 0);
+
+  // a wikilink-bearing sentence is never treated as a caveat
+  const withLink = hermes.stripCaveats("See [[Supplier contract]] and keep in mind the delivery window.");
+  assert.equal(withLink.removed.length, 0);
+
+  // nothing to strip -> identical text
+  const clean = hermes.stripCaveats("# Title\n\nJust the note body.");
+  assert.equal(clean.text, "# Title\n\nJust the note body.");
+  assert.equal(clean.removed.length, 0);
+  assert.equal(hermes.stripCaveats("").text, "");
+});
+
 // --- report ---------------------------------------------------------------
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

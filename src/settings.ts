@@ -495,6 +495,18 @@ export class HermesSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("Strip caveats from answers")
+      .setDesc(
+        "When an answer is inserted, appended or saved into a note, drop the assistant's own remarks — “Let me know if you want more”, “Note: I can only see the conventions you shared”. Generated notes are never touched, and Copy always gives the raw answer."
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.stripCaveats).onChange((value) => {
+          this.plugin.settings.stripCaveats = value;
+          void this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
       .setName("Send the open note as context")
       .setDesc("Default for the chat panel and the create dialog. The open note is trimmed to about 12 000 characters.")
       .addToggle((toggle) =>

@@ -78,7 +78,10 @@ export interface HermesAgentNotesSettings {
   defaultFolder: string;
   filenameStyle: FilenameStyle;
   openAfterCreate: boolean;
+  /** Ask for frontmatter from the detected vault properties. */
   autoFrontmatter: boolean;
+  /** Drop the assistant's caveats when an answer is written into a note. */
+  stripCaveats: boolean;
   includeActiveNote: boolean;
   maxHistoryMessages: number;
 
@@ -116,6 +119,7 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   filenameStyle: "keep",
   openAfterCreate: true,
   autoFrontmatter: true,
+  stripCaveats: true,
   includeActiveNote: true,
   maxHistoryMessages: 12,
 

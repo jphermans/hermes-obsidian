@@ -149,7 +149,7 @@ function stripChatter(text: string): string {
 }
 
 /** Unwrap a single fence that wraps the whole note (a very common model tic). */
-function stripOuterFence(text: string): string {
+export function unwrapFence(text: string): string {
   if (!text.startsWith(FENCE)) return text;
   const firstBreak = text.indexOf("\n");
   if (firstBreak < 0) return text;
@@ -168,7 +168,7 @@ export function extractNote(raw: string): string {
   let text = (raw || "").split("\r\n").join("\n").trim();
   for (let pass = 0; pass < 2; pass++) {
     text = stripChatter(text);
-    text = stripOuterFence(text);
+    text = unwrapFence(text);
   }
   // A trailing unclosed fence is always an artefact.
   if (text.indexOf(FENCE) >= 0) {

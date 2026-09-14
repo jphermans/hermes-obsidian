@@ -24,6 +24,7 @@ import {
   serializeNote,
   titleFromNote,
   uniquePath,
+  unwrapFence,
   writeNote,
 } from "./note-writer";
 import {
@@ -33,6 +34,7 @@ import {
   settingsExportPath,
 } from "./settings-file";
 import { JsonFileSuggestModal } from "./ui/file-suggest";
+import { stripCaveats } from "./caveats";
 import {
   conventionsReport,
   defaultFrontmatterTemplate,
@@ -835,16 +837,31 @@ export default class HermesAgentNotesPlugin extends Plugin {
     }
   }
 
+  /**
+   * Answers written into a note lose the assistant's own caveats; generated
+   * notes never do (a real note may legitimately contain a "Note:" line).
+   */
+  private cleanAnswer(text: string): { text: string; suffix: string } {
+    if (!this.settings.stripCaveats) return { text: text.trim(), suffix: "" };
+    const cleaned = stripCaveats(text);
+    const count = cleaned.removed.length;
+    return {
+      text: cleaned.text,
+      suffix: count > 0 ? " (dropped " + count + " caveat" + (count === 1 ? "" : "s") + ")" : "",
+    };
+  }
+
   insertAtCursor(text: string): void {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view || !view.file) {
       new Notice("Open a note to insert into.");
       return;
     }
+    const cleaned = this.cleanAnswer(text);
     const editor = view.editor;
     const cursor = editor.getCursor();
-    editor.replaceSelection((cursor.ch > 0 ? "\n\n" : "") + text.trim() + "\n");
-    new Notice("Inserted at the cursor.");
+    editor.replaceSelection((cursor.ch > 0 ? "\n\n" : "") + cleaned.text + "\n");
+    new Notice("Inserted at the cursor" + cleaned.suffix + ".");
   }
 
   async appendToActiveNote(text: string): Promise<void> {
@@ -853,18 +870,22 @@ export default class HermesAgentNotesPlugin extends Plugin {
       new Notice("Open a note to append to.");
       return;
     }
+    const cleaned = this.cleanAnswer(text);
     try {
       const current = await this.app.vault.read(file);
       const separator = current.length === 0 || current.endsWith("\n") ? "\n" : "\n\n";
-      await this.app.vault.modify(file, current + separator + text.trim() + "\n");
-      new Notice("Appended to " + file.basename + ".");
+      await this.app.vault.modify(file, current + separator + cleaned.text + "\n");
+      new Notice("Appended to " + file.basename + cleaned.suffix + ".");
     } catch (error) {
       new Notice("Could not update the note: " + (error instanceof Error ? error.message : String(error)));
     }
   }
 
   async saveTextAsNote(text: string, hint: string): Promise<void> {
-    const note = extractNote(text);
+    const cleaned = this.cleanAnswer(text);
+    // Answers get the fence treatment only: their conversational cleanup is the
+    // stripCaveats setting above, so the toggle actually means something.
+    const note = unwrapFence(cleaned.text);
     if (!note.trim()) {
       new Notice("There is nothing to save.");
       return;
@@ -875,7 +896,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
     const path = uniquePath(this.app, folder, fileName);
     try {
       const file = await writeNote(this.app, path, note.trim() + "\n", "create");
-      new Notice("Saved as " + file.path);
+      new Notice("Saved as " + file.path + cleaned.suffix);
       if (this.settings.openAfterCreate) {
         const leaf = this.app.workspace.getLeaf(false);
         await leaf.openFile(file);
