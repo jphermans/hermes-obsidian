@@ -167,7 +167,7 @@
 <body>
 <header class="top">
   <div class="top-inner">
-    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.23</span> <small>complete setup guide</small></span>
+    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.24</span> <small>complete setup guide</small></span>
     <span class="top-actions">
       <a class="ghost" style="padding:7px 11px;border:1px solid var(--border);border-radius:8px" href="https://github.com/jphermans/hermes-obsidian">Repository</a>
       <button class="ghost" id="theme">Theme</button>
@@ -576,21 +576,122 @@ tailscale serve status</code></pre>
 
     <h2 id="cloudflare">5 · Cloudflare Tunnel (named) + Access</h2>
     <p>Gives you a permanent public HTTPS hostname without opening a port. Needs a domain on Cloudflare (the free plan is enough).</p>
-    <pre><code>brew install cloudflared
-cloudflared tunnel login                      # browser: authorise the zone
+
+    <h3>Install <code>cloudflared</code> — every system</h3>
+    <table>
+      <thead><tr><th>System</th><th>Install</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>macOS</b></td>
+          <td><code>brew install cloudflared</code></td>
+          <td>Or download the <a href="https://github.com/cloudflare/cloudflared/releases/latest">darwin arm64 / amd64 <code>.tgz</code></a> and put the binary on your <code>PATH</code>.</td>
+        </tr>
+        <tr>
+          <td><b>Windows</b> <span class="pill accent">easiest</span></td>
+          <td><code>winget install --id Cloudflare.cloudflared -e</code></td>
+          <td>Then reopen the terminal so <code>cloudflared</code> is on <code>PATH</code>. PowerShell or CMD — no admin needed for the install itself.</td>
+        </tr>
+        <tr>
+          <td><b>Windows</b> (no winget, or you want the installer)</td>
+          <td>Download <a href="https://github.com/cloudflare/cloudflared/releases/latest"><code>cloudflared-windows-amd64.msi</code></a> and run it</td>
+          <td>The zip-free alternative is the <code>.exe</code>: copy it to <code>C:\Cloudflared\bin\</code>, rename it to <code>cloudflared.exe</code>, and call it by full path (<code>C:\Cloudflared\bin\cloudflared.exe</code>) instead of relying on <code>PATH</code>.</td>
+        </tr>
+        <tr>
+          <td><b>Debian · Ubuntu · Mint</b></td>
+          <td>
+            <code>sudo mkdir -p --mode=0755 /usr/share/keyrings</code><br>
+            <code>curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg &gt;/dev/null</code><br>
+            <code>echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" | sudo tee /etc/apt/sources.list.d/cloudflared.list</code><br>
+            <code>sudo apt-get update &amp;&amp; sudo apt-get install cloudflared</code>
+          </td>
+          <td>Straight from Cloudflare's package repository, so later updates come with a normal <code>apt upgrade</code>.</td>
+        </tr>
+        <tr>
+          <td><b>RHEL · CentOS · Fedora</b></td>
+          <td>
+            <code>curl -fsSl https://pkg.cloudflare.com/cloudflared.repo | sudo tee /etc/yum.repos.d/cloudflared.repo</code><br>
+            <code>sudo yum update &amp;&amp; sudo yum install cloudflared</code>
+          </td>
+          <td>Use <code>dnf</code> in place of <code>yum</code> on modern Fedora/RHEL.</td>
+        </tr>
+        <tr>
+          <td><b>Arch · Manjaro</b></td>
+          <td><code>sudo pacman -Syu cloudflared</code></td>
+          <td>From the official repositories — no AUR package needed.</td>
+        </tr>
+        <tr>
+          <td><b>Docker / NAS</b></td>
+          <td><code>docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token &lt;token&gt;</code></td>
+          <td>Only for a <b>remotely-managed</b> tunnel created in the dashboard; use the token the dashboard gives you. Locally-managed tunnels need the <code>.json</code> credentials file mounted in.</td>
+        </tr>
+        <tr>
+          <td><b>Any other Linux</b></td>
+          <td>Direct binaries: <a href="https://github.com/cloudflare/cloudflared/releases/latest">amd64 · 386 · arm · arm64</a> — plus <code>.deb</code> and <code>.rpm</code> builds</td>
+          <td><code>chmod +x cloudflared &amp;&amp; sudo mv cloudflared /usr/local/bin/</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="field">Cloudflare's own advice: if you create the tunnel in the <b>dashboard</b>, copy the install command it shows you — it is already correct for the machine you are on.</p>
+
+    <h3>Create the tunnel (same on every system)</h3>
+    <pre><code>cloudflared tunnel login                      # browser: authorise the zone
 cloudflared tunnel create hermes              # note the UUID it prints
 cloudflared tunnel route dns hermes hermes.example.com</code></pre>
-    <p>Then <code>~/.cloudflared/config.yml</code> (replace the UUID with the one you were given):</p>
+    <p>On <b>Windows</b> the config and credentials live in <code>%USERPROFILE%\.cloudflared\</code> and the binary may need its full path (<code>C:\Cloudflared\bin\cloudflared.exe</code>). The configuration file below is otherwise identical, with Windows paths:</p>
+    <pre><code># Windows equivalent of the config.yml below
+tunnel: 7b9c1f38-2f4c-4a2e-9c11-3f0a5b6d7e80
+credentials-file: C:\Users\you\.cloudflared\7b9c1f38-2f4c-4a2e-9c11-3f0a5b6d7e80.json
+ingress:
+  - hostname: hermes.example.com
+    service: http://127.0.0.1:8642
+  - service: http_status:404
+logfile: C:\Cloudflared\cloudflared.log</code></pre>
+
+    <h3>Configuration file</h3>
+    <p><code>~/.cloudflared/config.yml</code> (macOS/Linux) — replace the UUID with the one you were given:</p>
     <pre><code>tunnel: 7b9c1f38-2f4c-4a2e-9c11-3f0a5b6d7e80
 credentials-file: /Users/you/.cloudflared/7b9c1f38-2f4c-4a2e-9c11-3f0a5b6d7e80.json
 ingress:
   - hostname: hermes.example.com
     service: http://127.0.0.1:8642
   - service: http_status:404</code></pre>
-    <pre><code>cloudflared tunnel run hermes                 # test, Ctrl-C when it answers
-cloudflared service install                   # starts at login  (sudo … = at boot)
+    <p>Check the routing rules before you rely on them: <code>cloudflared tunnel ingress validate</code>.</p>
+
+    <h3>Run it as a service — per system</h3>
+    <pre><code># First, check it works (Ctrl-C when the hostname answers, on any system)
+cloudflared tunnel run hermes
+
+# ── macOS ────────────────────────────────────────────────────────────
+cloudflared service install                   # launch agent: starts at login
+sudo cloudflared service install              # launch daemon: starts at boot
 sudo launchctl start com.cloudflare.cloudflared
-cloudflared tunnel info hermes                # status and live connections</code></pre>
+# logs: /Library/Logs/com.cloudflare.cloudflared.{out,err}.log
+
+# ── Linux (systemd) ─────────────────────────────────────────────────
+sudo cloudflared service install
+# sudo points $HOME at /root, so if the config was created in your own
+# home, pass it explicitly or the service cannot find it:
+sudo cloudflared --config /home/&lt;USER&gt;/.cloudflared/config.yml service install
+sudo systemctl start cloudflared
+systemctl status cloudflared                  # restart after config changes
+
+# ── Windows ─────────────────────────────────────────────────────────
+# A service runs as the SYSTEM account, which has a different home folder:
+cloudflared.exe service install
+mkdir C:\Windows\System32\config\systemprofile\.cloudflared
+copy C:\Users\%USERNAME%\.cloudflared\cert.pem  C:\Windows\System32\config\systemprofile\.cloudflared\
+copy C:\Users\%USERNAME%\.cloudflared\&lt;Tunnel-ID&gt;.json  C:\Windows\System32\config\systemprofile\.cloudflared\
+# put config.yml there too, then point the service at it — as admin, in the
+# Registry Editor, set ImagePath under
+#   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Cloudflared
+# to: C:\Cloudflared\bin\cloudflared.exe --config=C:\Windows\System32\config\systemprofile\.cloudflared\config.yml tunnel run
+sc start cloudflared                          # sc stop / sc start to reload config</code></pre>
+    <div class="card note"><p style="margin:0">The Windows path is the fiddly one because the service identity, not you, reads the config. The shortcut: create the tunnel in the <b>dashboard</b> and use the <b>token</b> form (<code>cloudflared.exe service install &lt;token&gt;</code>), which keeps the whole configuration on Cloudflare's side — nothing to copy into <code>systemprofile</code>.</p></div>
+
+    <h3>Status and proof it is up</h3>
+    <pre><code>cloudflared tunnel info hermes                # status and live connections
+cloudflared tunnel list
+curl -sS https://hermes.example.com/health    # from another network, ideally</code></pre>
     <p>Prefer the dashboard? <b>Networking → Tunnels → Create a tunnel → Published application</b> does the same and the connector it hands you also runs as a service.</p>
 
     <h3>Lock it down with Access + a service token</h3>
@@ -610,9 +711,21 @@ CF-Access-Client-Secret: bdd31cbc4dec990953e39163fbbb194c93313ca9f0a6e420346af9d
 
     <h2 id="ngrok">6 · ngrok with a static domain</h2>
     <p>Fastest public HTTPS URL. Claim the <b>static domain</b> your account includes — that is what makes it permanent instead of a new random URL on every restart.</p>
-    <pre><code>brew install ngrok
-ngrok config add-authtoken &lt;your-authtoken&gt;    # dashboard.ngrok.com → Your Authtoken</code></pre>
-    <p>Then <code>~/Library/Application Support/ngrok/ngrok.yml</code> (agent v3 — <code>tunnels:</code> is deprecated):</p>
+    <h3>Install the ngrok agent — every system</h3>
+    <table>
+      <thead><tr><th>System</th><th>Install</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><b>macOS</b></td><td><code>brew install ngrok</code></td><td>or the standalone macOS download from ngrok.com/download</td></tr>
+        <tr><td><b>Windows</b></td><td><code>winget install ngrok -s msstore</code></td><td>Microsoft Store build. Also available: <code>scoop install ngrok</code> and <code>choco install ngrok</code> (ngrok publishes the Chocolatey package itself).</td></tr>
+        <tr><td><b>Debian · Ubuntu</b></td><td><code>curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc &gt;/dev/null</code><br><code>echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list</code><br><code>sudo apt update &amp;&amp; sudo apt install ngrok</code></td><td>Substitute your release codename for <code>bookworm</code> if you are on another Debian/Ubuntu version.</td></tr>
+        <tr><td><b>Any Linux (snap)</b></td><td><code>sudo snap install ngrok</code></td><td>Simplest on a server you do not want to add a repo to.</td></tr>
+        <tr><td><b>Any Linux / FreeBSD / Raspberry Pi</b></td><td>Standalone binary from ngrok.com/download</td><td><code>sudo tar -xvzf ~/Downloads/ngrok-v3-stable-linux-amd64.tgz -C /usr/local/bin</code></td></tr>
+        <tr><td><b>Docker / NAS</b></td><td><code>docker run --net=host -v ~/.config/ngrok/ngrok.yml:/etc/ngrok.yml ngrok/ngrok:latest start --all --config /etc/ngrok.yml</code></td><td>Keeps the agent next to the tunnel config; use <code>-p 8642:8642</code> style networking if you prefer not to use host mode.</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code>ngrok config add-authtoken &lt;your-authtoken&gt;    # dashboard.ngrok.com → Your Authtoken</code></pre>
+    <p>Then the agent config file — <code>~/Library/Application Support/ngrok/ngrok.yml</code> on macOS, <code>~/.config/ngrok/ngrok.yml</code> on Linux, <code>%LOCALAPPDATA%\ngrok\ngrok.yml</code> on Windows. Run <code>ngrok config edit</code> to open it (or <code>ngrok config check</code> to see where it expects it) instead of guessing. Agent v3 — <code>tunnels:</code> is deprecated:</p>
     <pre><code>version: 3
 agent:
   authtoken: &lt;your-authtoken&gt;

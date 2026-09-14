@@ -71,7 +71,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 >
 > It is the long-form version of the sections below, with a copy button on every command and a verify checklist that walks outward from the server. The same guide is in the plugin: **Settings → Hermes Agent Notes → Setup guide**.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.23** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.24** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -178,12 +178,24 @@ A header named `Authorization` replaces the API key. The plugin warns you in-app
 
 A *named* tunnel keeps one hostname forever and runs as a background service, so the plugin's URL never changes. It needs a domain on Cloudflare (the free plan is enough).
 
-```bash
-# 1. Install and authenticate cloudflared on the Hermes host
-brew install cloudflared                  # Linux: see Cloudflare's apt/rpm packages
-cloudflared tunnel login                  # browser: pick the zone to authorise
+**Install `cloudflared` on the Hermes host — every system:**
 
-# 2. Create the tunnel and point a hostname at it
+| System | Install | Notes |
+|---|---|---|
+| **macOS** | `brew install cloudflared` | or the [darwin arm64/amd64 `.tgz`](https://github.com/cloudflare/cloudflared/releases/latest) |
+| **Windows** | `winget install --id Cloudflare.cloudflared -e` | reopen the terminal afterwards so it is on `PATH` |
+| **Windows** (no winget) | run the [`.msi`](https://github.com/cloudflare/cloudflared/releases/latest), or copy the `.exe` to `C:\Cloudflared\bin\cloudflared.exe` and call it by full path | |
+| **Debian · Ubuntu · Mint** | `sudo mkdir -p --mode=0755 /usr/share/keyrings`<br>`curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \| sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null`<br>`echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" \| sudo tee /etc/apt/sources.list.d/cloudflared.list`<br>`sudo apt-get update && sudo apt-get install cloudflared` | Cloudflare's own repository, so `apt upgrade` keeps it current |
+| **RHEL · CentOS · Fedora** | `curl -fsSl https://pkg.cloudflare.com/cloudflared.repo \| sudo tee /etc/yum.repos.d/cloudflared.repo`<br>`sudo yum update && sudo yum install cloudflared` | `dnf` on modern Fedora/RHEL |
+| **Arch · Manjaro** | `sudo pacman -Syu cloudflared` | official repositories, no AUR needed |
+| **Docker / NAS** | `docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token <token>` | dashboard-created (remotely-managed) tunnels only; a locally-managed one needs its `.json` credentials mounted in |
+| **Other Linux** | direct [AMD64 · 386 · ARM · ARM64](https://github.com/cloudflare/cloudflared/releases/latest) binaries, plus `.deb`/`.rpm` | `chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/` |
+
+If you create the tunnel in the Cloudflare **dashboard**, copy the install command it shows you — it is already correct for the machine you are on.
+
+```bash
+# 2. Create the tunnel and point a hostname at it (identical on every system)
+cloudflared tunnel login                  # browser: pick the zone to authorise
 cloudflared tunnel create hermes          # prints the tunnel UUID and credentials file
 cloudflared tunnel route dns hermes hermes.example.com
 ```
@@ -198,17 +210,38 @@ ingress:
   - service: http_status:404
 ```
 
+On **Windows** the same file lives at `%USERPROFILE%\.cloudflared\config.yml` with Windows paths (`credentials-file: C:\Users\you\.cloudflared\<UUID>.json`, optional `logfile: C:\Cloudflared\cloudflared.log`), and the binary may need its full path. Validate the rules with `cloudflared tunnel ingress validate`.
+
 ```bash
-# 3. Test it, then make it permanent
+# 3. Test it, then make it permanent — the service step differs per system
 cloudflared tunnel run hermes             # Ctrl-C once the hostname answers
 
+# macOS
 cloudflared service install               # launch agent: starts at login
 sudo cloudflared service install          # or launch daemon: starts at boot
 sudo launchctl start com.cloudflare.cloudflared
-cloudflared tunnel info hermes            # status and connections
+# logs: /Library/Logs/com.cloudflare.cloudflared.{out,err}.log
+
+# Linux (systemd)
+sudo cloudflared service install
+# sudo makes $HOME=/root, so if the config is in your own home, name it explicitly:
+sudo cloudflared --config /home/<USER>/.cloudflared/config.yml service install
+sudo systemctl start cloudflared
+systemctl status cloudflared              # systemctl restart cloudflared after a config change
+
+# Windows
+cloudflared.exe service install
+# a service runs as the SYSTEM account: its home is
+# C:\Windows\System32\config\systemprofile\.cloudflared\ — put cert.pem,
+# the <UUID>.json credentials and config.yml there, then set ImagePath in
+#   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Cloudflared
+# to: C:\Cloudflared\bin\cloudflared.exe --config=C:\Windows\System32\config\systemprofile\.cloudflared\config.yml tunnel run
+sc start cloudflared                      # sc stop / sc start to reload config
+
+cloudflared tunnel info hermes            # status and connections, every system
 ```
 
-Logs land in `/Library/Logs/com.cloudflare.cloudflared.{out,err}.log`. If you would rather not use the CLI, the dashboard route (**Networking → Tunnels → Create a tunnel → Published application**) does the same thing and the connector it tells you to install runs as a service too.
+The Windows service is the fiddly one because the *service identity*, not you, reads the config. Shortcut: create the tunnel in the dashboard and install it in **token** form (`cloudflared.exe service install <token>`), which leaves the configuration on Cloudflare's side. The dashboard route (**Networking → Tunnels → Create a tunnel → Published application**) does the same as the CLI and the connector it gives you also runs as a service.
 
 **Put Cloudflare Access in front of it** so the hostname is not open to the internet. In **Zero Trust → Access controls → Service credentials → Service Tokens**, create a token (**Service Token Duration** — nothing lasts forever, and Cloudflare can alert you a week before it expires), then create an Access application for the hostname with a policy whose action is **Service Auth** — a plain *Allow* policy will still ask for an identity provider login and fail a non-browser client. Paste the two headers it shows you into the plugin's *Extra request headers*:
 
@@ -221,13 +254,27 @@ CF-Access-Client-Secret: bdd31cbc4dec990953e39163fbbb194c93313ca9f0a6e420346af9d
 
 ngrok gives your account a **static domain**, which is what makes it usable as a permanent URL — claim it in the dashboard under **Domains → New Domain**, then use it everywhere instead of the random quick-tunnel URL.
 
+**Install the ngrok agent — every system:**
+
+| System | Install |
+|---|---|
+| **macOS** | `brew install ngrok` |
+| **Windows** | `winget install ngrok -s msstore` — or `scoop install ngrok`, or `choco install ngrok` (ngrok publishes the Chocolatey package) |
+| **Debian · Ubuntu** | `curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \| sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null`<br>`echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \| sudo tee /etc/apt/sources.list.d/ngrok.list`<br>`sudo apt update && sudo apt install ngrok` (swap `bookworm` for your codename) |
+| **Any Linux (snap)** | `sudo snap install ngrok` |
+| **Any Linux / FreeBSD / Pi** | standalone binary: `sudo tar -xvzf ~/Downloads/ngrok-v3-stable-linux-amd64.tgz -C /usr/local/bin` |
+| **Docker / NAS** | `docker run --net=host -v ~/.config/ngrok/ngrok.yml:/etc/ngrok.yml ngrok/ngrok:latest start --all --config /etc/ngrok.yml` |
+
 ```bash
-brew install ngrok
-ngrok config add-authtoken <your-authtoken>       # from dashboard.ngrok.com → Your Authtoken
+ngrok config add-authtoken <your-authtoken>       # dashboard.ngrok.com → Your Authtoken
 ```
 
 ```yaml
-# ~/Library/Application Support/ngrok/ngrok.yml — agent v3 config (tunnels: is deprecated)
+# ngrok.yml — macOS: ~/Library/Application Support/ngrok/ngrok.yml
+#             Linux: ~/.config/ngrok/ngrok.yml
+#             Windows: %LOCALAPPDATA%\ngrok\ngrok.yml
+# Not sure where yours is? `ngrok config edit` opens it, `ngrok config check` locates it.
+# Agent v3 config — `tunnels:` is deprecated.
 version: 3
 agent:
   authtoken: <your-authtoken>
@@ -483,7 +530,8 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **No model in the dropdown** | Harmless: `/v1/models` advertises one agent name. Press *Test connection* and use that name. |
 | **Streaming was refused** | Add the `API_SERVER_CORS_ORIGINS` line above and restart the gateway, or turn streaming off. |
 | **Phone cannot reach the instance at all** | Plain HTTP to another machine is blocked on mobile. Use HTTPS — Tailscale, Cloudflare Tunnel or a TLS reverse proxy. Loopback (`http://127.0.0.1:…`, Hermes running on the same device) is the one exception. |
-| **The URL changes every time I restart the tunnel** | That is a quick tunnel. A *named* Cloudflare tunnel (`cloudflared tunnel create` + `tunnel route dns` + `service install`) and an ngrok **static domain** both keep one URL, and both run as services — see [A permanent URL](#a-permanent-url-cloudflare-tunnel-named). |
+| **The URL changes every time I restart the tunnel** | That is a quick tunnel. A *named* Cloudflare tunnel (`cloudflared tunnel create` + `tunnel route dns` + the service step for your OS) and an ngrok **static domain** both keep one URL, and both run as services — see [A permanent URL](#a-permanent-url-cloudflare-tunnel-named). |
+| **cloudflared is not on my PATH** | On Windows, reopen the terminal after `winget install`, or call `C:\Cloudflared\bin\cloudflared.exe` by full path. On Linux, the service runs as root — `sudo cloudflared --config /home/<user>/.cloudflared/config.yml service install` if the config lives in your home. |
 | **The tunnel is up but the plugin still fails** | Check the layers in this order: `hermes gateway status` (the API server itself), the tunnel service (`cloudflared tunnel info hermes`, or `ngrok` service status), then the host — a sleeping machine drops the tunnel. `curl https://your-host/health` from a phone on mobile data tells you which layer is down. |
 | **On a phone, `127.0.0.1` / `localhost` will not save** | Deliberate: on a phone that address points at the phone itself, so nothing could reach Hermes. Use your Tailscale/Cloudflare/ngrok URL. If Hermes really does run on that device (Termux on Android), press *Save anyway* under the field. |
 | **HTTP 403 behind Cloudflare Access** | Add the `CF-Access-Client-Id` / `CF-Access-Client-Secret` service token headers under *Extra request headers*. |

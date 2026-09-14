@@ -832,7 +832,11 @@ export class HermesSettingTab extends PluginSettingTab {
       steps,
       [
         "# Cloudflare Tunnel (named) — one hostname forever, needs a domain on Cloudflare",
-        "brew install cloudflared && cloudflared tunnel login",
+        "# install cloudflared on the Hermes host:",
+        "#   macOS    brew install cloudflared",
+        "#   Windows  winget install --id Cloudflare.cloudflared -e",
+        "#   Debian/Ubuntu/RHEL/Arch: apt / yum / pacman from Cloudflare's repo — see the web guide",
+        "cloudflared tunnel login                      # every system, then:",
         "cloudflared tunnel create hermes",
         "cloudflared tunnel route dns hermes hermes.example.com",
         "#   ~/.cloudflared/config.yml:",
@@ -842,9 +846,13 @@ export class HermesSettingTab extends PluginSettingTab {
         "#       - hostname: hermes.example.com",
         "#         service: http://127.0.0.1:8642",
         "#       - service: http_status:404",
-        "cloudflared tunnel run hermes          # test, then Ctrl-C",
-        "cloudflared service install            # launch agent (sudo → launch daemon at boot)",
+        "cloudflared tunnel run hermes                  # test, then Ctrl-C",
+        "cloudflared service install                    # macOS: launch agent (sudo → at boot)",
         "sudo launchctl start com.cloudflare.cloudflared",
+        "sudo cloudflared service install               # Linux: systemd",
+        "#   sudo makes $HOME=/root — add --config /home/<user>/.cloudflared/config.yml if needed",
+        "sudo systemctl start cloudflared",
+        "cloudflared.exe service install                # Windows: runs as SYSTEM — see the web guide",
         "",
         "# ngrok — claim the static domain first (dashboard → Domains → New Domain)",
         "brew install ngrok",
@@ -867,6 +875,9 @@ export class HermesSettingTab extends PluginSettingTab {
       "Copy commands"
     );
     const permanent = steps.createEl("ul", { cls: "hermes-guide-list" });
+    permanent.createEl("li", {
+      text: "cloudflared installs on every system: brew on macOS, winget install --id Cloudflare.cloudflared -e on Windows (or the .msi), apt/yum/pacman from Cloudflare's repository on Linux, and a Docker image. Running it as a service differs per system too — launchd on macOS, systemd on Linux, and a Windows service whose config must live in the SYSTEM account's profile. The web guide has the exact commands for each.",
+    });
     permanent.createEl("li", {
       text: "Cloudflare Access: create a service token (Zero Trust → Access controls → Service credentials → Service Tokens), put an Access application in front of the hostname with a Service Auth policy, and paste the two headers it shows you into Extra request headers. A plain Allow policy still asks for an identity provider login and will fail this plugin.",
     });
