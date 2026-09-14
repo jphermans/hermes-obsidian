@@ -207,6 +207,41 @@ await test("chatStream surfaces HTTP failures through the same error mapping", a
   );
 });
 
+await test("extra request headers are sent, and an explicit Authorization wins", async () => {
+  seen.length = 0;
+  const { client } = makeClient({ extraHeaders: "CF-Access-Client-Id: abc.access\nX-Custom: hello\n" });
+  await client.models();
+  const call = seen.find((entry) => entry.url === "/v1/models");
+  assert.equal(call.headers["cf-access-client-id"], "abc.access");
+  assert.equal(call.headers["x-custom"], "hello");
+  assert.equal(call.headers.authorization, "Bearer " + KEY);
+
+  seen.length = 0;
+  const { client: proxyClient } = makeClient({ apiKey: "should-not-be-used", extraHeaders: "Authorization: Bearer proxy-token" });
+  await proxyClient.health();
+  const proxyCall = seen.find((entry) => entry.url === "/health");
+  assert.equal(proxyCall.headers.authorization, "Bearer proxy-token");
+});
+
+await test("a failed request on mobile explains the cleartext block", async () => {
+  hermes.setPlatform({ isMobile: true, isDesktop: false });
+  try {
+    const client = new hermes.HermesClient(
+      Object.assign({}, hermes.DEFAULT_SETTINGS, { baseUrl: "http://0.0.0.0:9", apiKey: KEY })
+    );
+    await assert.rejects(
+      () => client.chat([{ role: "user", content: "x" }]),
+      (error) => {
+        assert.equal(error.kind, "network");
+        assert.ok(/plain HTTP to another machine/.test(error.message), "missing hint: " + error.message);
+        return true;
+      }
+    );
+  } finally {
+    hermes.setPlatform({ isMobile: false, isDesktop: true });
+  }
+});
+
 await test("a profile prefix routes to /p/<profile>/v1", async () => {
   seen.length = 0;
   const { client } = makeClient({ profile: "alice" });

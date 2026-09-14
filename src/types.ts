@@ -53,6 +53,8 @@ export interface HermesAgentNotesSettings {
   /** Optional multi-profile prefix (`/p/<profile>`). Empty = default profile. */
   profile: string;
   apiKey: string;
+  /** Extra request headers, one `Name: value` per line (Cloudflare Access, proxies). */
+  extraHeaders: string;
   model: string;
   /** Optional provider slug sent with each request (needed to override the model). */
   provider: string;
@@ -87,6 +89,7 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   baseUrl: "http://127.0.0.1:8642",
   profile: "",
   apiKey: "",
+  extraHeaders: "",
   model: "hermes-agent",
   provider: "",
   temperature: -1,

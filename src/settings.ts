@@ -1,6 +1,6 @@
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type HermesAgentNotesPlugin from "./main";
-import { describeError, obsidianOrigins } from "./hermes-client";
+import { cleartextWarning, describeError, endpointsFor, obsidianOrigins } from "./hermes-client";
 import { copyText } from "./ui/clipboard";
 import { listFolders } from "./vault-rules";
 
@@ -65,6 +65,12 @@ export class HermesSettingTab extends PluginSettingTab {
     const chat = buttons.createEl("button", { text: "Open chat panel" });
     chat.addEventListener("click", () => void this.plugin.activateChatView());
 
+    const unreachable = cleartextWarning(endpointsFor(this.plugin.settings.baseUrl, this.plugin.settings.profile).v1);
+    if (unreachable) {
+      const warn = containerEl.createDiv({ cls: "hermes-callout hermes-callout-warn" });
+      warn.createEl("p", { text: unreachable });
+    }
+
     new Setting(containerEl)
       .setName("API server URL")
       .setDesc("Root of the Hermes API server — no /v1 suffix. Local default: http://127.0.0.1:8642")
@@ -92,6 +98,23 @@ export class HermesSettingTab extends PluginSettingTab {
             void this.plugin.saveSettings();
           })
       );
+
+    new Setting(containerEl)
+      .setName("Extra request headers")
+      .setDesc(
+        "One Name: value per line. Needed when the API server sits behind Cloudflare Access, an authenticating proxy or a gateway that wants its own headers. A header named Authorization replaces the API key above."
+      )
+      .addTextArea((text) => {
+        text.setPlaceholder("CF-Access-Client-Id: xxxx.access\nCF-Access-Client-Secret: yyyy");
+        text.setValue(this.plugin.settings.extraHeaders);
+        text.inputEl.rows = 3;
+        text.inputEl.addClass("hermes-headers-input");
+        text.onChange((value) => {
+          this.plugin.settings.extraHeaders = value;
+          this.plugin.settings.connection = null;
+          void this.plugin.saveSettings();
+        });
+      });
 
     const keySetting = new Setting(containerEl)
       .setName("API key")
@@ -450,16 +473,46 @@ export class HermesSettingTab extends PluginSettingTab {
       text: "The first call returns {\"status\": \"ok\"}; the second lists the agent as a model. A 401 means the key does not match.",
     });
 
-    steps.createEl("h3", { text: "3 · Remote instances" });
+    steps.createEl("h3", { text: "3 · Reach it from anywhere (phones, tablets, other networks)" });
+    steps.createEl("p", {
+      text:
+        "Mobile operating systems refuse plain HTTP to another machine, so a phone cannot use http://192.168.x.x:8642. Reach Hermes over HTTPS — any of these keeps the plugin identical on desktop and mobile:",
+    });
     const remote = steps.createEl("ul", { cls: "hermes-guide-list" });
     remote.createEl("li", {
-      text: "Bind the API server to more than loopback (API_SERVER_HOST=0.0.0.0) or publish it through a tunnel, then use that address here.",
+      text: "Tailscale (easiest, nothing exposed to the internet): install it on the Hermes host and on the phone, run the command below, and paste the https://…ts.net address it prints.",
     });
     remote.createEl("li", {
-      text: "Prefer HTTPS. iOS and Android are stricter than desktop about plain-HTTP traffic, so a TLS reverse proxy (Caddy, Tailscale, Cloudflare Tunnel) is the reliable route on mobile.",
+      text: "Cloudflare Tunnel: a public HTTPS hostname without opening a port. With Cloudflare Access in front, paste the service token headers into Extra request headers.",
     });
     remote.createEl("li", {
-      text: "The key protects a full agent with terminal access. Treat it like an SSH password and never share the vault the plugin data lives in.",
+      text: "A TLS reverse proxy on a VPS or the same host — for example Caddy, which gets a certificate automatically.",
+    });
+    this.codeBlock(
+      steps,
+      [
+        "# Tailscale — HTTPS address for every device on your tailnet",
+        "tailscale serve --bg 8642",
+        "",
+        "# Cloudflare Tunnel — quick public HTTPS URL",
+        "cloudflared tunnel --url http://127.0.0.1:8642",
+        "",
+        "# Caddy on the host (Caddyfile): automatic HTTPS in front of the API server",
+        "hermes.example.com {",
+        "    reverse_proxy 127.0.0.1:8642",
+        "}",
+      ],
+      "Copy recipes"
+    );
+    const safety = steps.createEl("ul", { cls: "hermes-guide-list" });
+    safety.createEl("li", {
+      text: "Keep the API server bound to 127.0.0.1 and let the tunnel or proxy be the only way in — that way the port is never open directly.",
+    });
+    safety.createEl("li", {
+      text: "The key protects a full agent with terminal access. Prefer Tailscale or Cloudflare Access over a bare public port, and rotate the key if it ever leaks.",
+    });
+    safety.createEl("li", {
+      text: "Plain LAN HTTP (API_SERVER_HOST=0.0.0.0 plus http://192.168.x.x:8642) works on desktop only; phones will refuse it.",
     });
 
     steps.createEl("h3", { text: "4 · Streaming (optional)" });

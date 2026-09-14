@@ -15,6 +15,7 @@ Hermes runs on your machine or on a server you own. The plugin talks to its Open
 - [Requirements](#requirements)
 - [Install with BRAT](#install-with-brat)
 - [Setup](#setup)
+- [Reachable from anywhere](#reachable-from-anywhere)
 - [Commands](#commands)
 - [Following Obsidian's rules](#following-obsidians-rules)
 - [Mobile](#mobile)
@@ -110,6 +111,38 @@ API_SERVER_CORS_ORIGINS=app://obsidian.md,capacitor://localhost,http://localhost
 
 Restart the gateway afterwards. Desktop presents `app://obsidian.md`, iOS `capacitor://localhost`, Android `http://localhost`. With **Stream answers** off (the default) the plugin uses Obsidian's native HTTP client and needs no CORS entry at all — and if a streaming request is refused, it falls back to that transport automatically.
 
+## Reachable from anywhere
+
+Phones and tablets refuse plain HTTP to another machine (iOS ATS, Android network security), so `http://192.168.x.x:8642` works on desktop but not on mobile. Expose the API server over HTTPS and the same URL works from every device, on any network:
+
+```bash
+# Tailscale — HTTPS address for every device on your tailnet, nothing public
+tailscale serve --bg 8642          # then use https://<machine>.<tailnet>.ts.net
+
+# Cloudflare Tunnel — public HTTPS hostname without opening a port
+cloudflared tunnel --url http://127.0.0.1:8642
+```
+
+```caddyfile
+# Caddy on the host: automatic HTTPS in front of the API server
+hermes.example.com {
+    reverse_proxy 127.0.0.1:8642
+}
+```
+
+Keep the API server bound to `127.0.0.1` and let the tunnel or proxy be the only way in. The plugin treats an `https://…` URL exactly like a local one — same transport, same streaming behaviour, no extra configuration.
+
+**Behind Cloudflare Access, an authenticating proxy or a gateway that wants its own headers**, add them in *Extra request headers* (one `Name: value` per line):
+
+```
+CF-Access-Client-Id: xxxx.access
+CF-Access-Client-Secret: yyyy
+```
+
+A header named `Authorization` replaces the API key. The plugin warns you in-app when the configured URL is plain HTTP while you are on a mobile device, and it names HTTPS as the fix instead of failing silently.
+
+**Security.** The key protects a full agent with terminal access on that machine. Prefer Tailscale or Cloudflare Access over a bare public port, and rotate `API_SERVER_KEY` if it ever leaks.
+
 ## Commands
 
 | Command | What it does |
@@ -151,7 +184,7 @@ The vault-convention scan reads from Obsidian's cache and takes ~20 ms on a 585-
 
 ## Data, privacy and safety
 
-* Settings — including the API key — live in `<vault>/.obsidian/plugins/hermes-agent-notes/data.json`. Keep the vault private and prefer a key you can rotate.
+* Settings — including the API key and any extra headers — live in `<vault>/.obsidian/plugins/hermes-agent-notes/data.json`. Keep the vault private and prefer a key you can rotate.
 * Only two things leave the vault: the conventions summary and the notes you explicitly send as context (trimmed to ~12 000 characters). The scan itself never leaves your machine.
 * The plugin never touches a note you did not ask it to change, and every write goes through the preview.
 * Requests go only to the Hermes URL you configure. Session reporting is opt-in and exists so long runs appear in Hermes session history.
@@ -166,7 +199,8 @@ The vault-convention scan reads from Obsidian's cache and takes ~20 ms on a 585-
 | **HTTP 429** | Too many concurrent runs on the Hermes side — retry, or raise `gateway.api_server.max_concurrent_runs`. |
 | **No model in the dropdown** | Harmless: `/v1/models` advertises one agent name. Press *Test connection* and use that name. |
 | **Streaming was refused** | Add the `API_SERVER_CORS_ORIGINS` line above and restart the gateway, or turn streaming off. |
-| **Mobile cannot reach a plain-HTTP instance** | Put it behind HTTPS (Tailscale, Caddy, Cloudflare Tunnel) — mobile OSes are stricter than desktop about cleartext traffic. |
+| **Phone cannot reach the instance at all** | Plain HTTP to another machine is blocked on mobile. Use HTTPS — Tailscale, Cloudflare Tunnel or a TLS reverse proxy. Loopback (`http://127.0.0.1:…`, Hermes running on the same device) is the one exception. |
+| **HTTP 403 behind Cloudflare Access** | Add the `CF-Access-Client-Id` / `CF-Access-Client-Secret` service token headers under *Extra request headers*. |
 | **The note ignores my model choice** | Hermes uses its own default model unless you also set a **provider override** (or enable `gateway.platforms.api_server.direct_model_requests` on the host). |
 | **Notes do not match my style** | Run **Show detected vault conventions** to see what was inferred, raise *Notes to analyse*, then rescan. |
 

@@ -4,4 +4,5 @@ export * from "../src/prompts";
 export * from "../src/vault-rules";
 export * from "../src/note-writer";
 export * from "../src/validate";
+export { Platform, setPlatform } from "obsidian";
 export { makeApp, makeAppObject } from "./test-support";

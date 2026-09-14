@@ -11,7 +11,7 @@
  *   API_SERVER_CORS_ORIGINS. If it fails, the caller falls back to requestUrl.
  */
 
-import { requestUrl } from "obsidian";
+import { Platform, requestUrl } from "obsidian";
 import type { HermesAgentNotesSettings } from "./types";
 
 export interface ChatMessage {
@@ -103,6 +103,59 @@ export function obsidianOrigins(): string[] {
   return ["app://obsidian.md", "capacitor://localhost", "http://localhost"];
 }
 
+/**
+ * Parses the `Name: value` header lines from the settings field. Blank lines
+ * and #-comments are ignored; malformed lines are dropped rather than sent.
+ */
+export function parseExtraHeaders(raw: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const line of (raw || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const colon = trimmed.indexOf(":");
+    if (colon <= 0) continue;
+    const name = trimmed.slice(0, colon).trim();
+    const value = trimmed.slice(colon + 1).trim();
+    if (!name || !value) continue;
+    headers[name] = value;
+  }
+  return headers;
+}
+
+function hostOf(url: string): string {
+  const scheme = url.indexOf("://");
+  if (scheme < 0) return "";
+  const rest = url.slice(scheme + 3);
+  let end = rest.length;
+  for (const stop of ["/", "?", "#"]) {
+    const index = rest.indexOf(stop);
+    if (index >= 0 && index < end) end = index;
+  }
+  const authority = rest.slice(0, end);
+  const at = authority.lastIndexOf("@");
+  const hostPort = at >= 0 ? authority.slice(at + 1) : authority;
+  const colon = hostPort.lastIndexOf(":");
+  const host = colon >= 0 ? hostPort.slice(0, colon) : hostPort;
+  return host.toLowerCase();
+}
+
+/**
+ * Mobile OSes refuse cleartext HTTP to other machines (iOS ATS, Android network
+ * security config). Returns a warning for that exact situation, otherwise "".
+ */
+export function cleartextWarning(url: string): string {
+  if (!Platform.isMobile) return "";
+  if (!url || url.slice(0, 7).toLowerCase() !== "http://") return "";
+  const host = hostOf(url);
+  if (!host || host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") {
+    return "";
+  }
+  return (
+    "This device is on mobile and the URL uses plain HTTP to another machine, which iOS and Android block. " +
+    "Reach Hermes over HTTPS instead — Tailscale (`tailscale serve`), Cloudflare Tunnel, or a TLS reverse proxy."
+  );
+}
+
 function firstLine(text: string, limit = 300): string {
   const flat = (text || "").replace(/\s+/g, " ").trim();
   return flat.length > limit ? flat.slice(0, limit) + "…" : flat;
@@ -146,16 +199,19 @@ function httpError(status: number, body: string, url: string): HermesError {
 function networkError(err: unknown, url: string): HermesError {
   if (isAbortError(err)) return new HermesError("Stopped.", "aborted");
   const msg = err instanceof Error ? err.message : String(err);
-  return new HermesError("Could not reach Hermes at " + url + " — " + msg, "network");
+  const hint = cleartextWarning(url);
+  return new HermesError("Could not reach Hermes at " + url + " — " + msg + (hint ? " " + hint : ""), "network");
 }
 
 function streamNetworkError(err: unknown, url: string, origins: string[]): HermesError {
   if (isAbortError(err)) return new HermesError("Stopped.", "aborted");
   const msg = err instanceof Error ? err.message : String(err);
+  const cleartext = cleartextWarning(url);
   return new HermesError(
     "Streaming request to " + url + " failed — " + msg +
       ". Streaming is a browser request, so Hermes must allow this app's origin: set API_SERVER_CORS_ORIGINS=" +
-      origins.join(",") + " in the Hermes .env and restart `hermes gateway` (or turn streaming off).",
+      origins.join(",") + " in the Hermes .env and restart `hermes gateway` (or turn streaming off)." +
+      (cleartext ? " " + cleartext : ""),
     "network"
   );
 }
@@ -189,9 +245,16 @@ export class HermesClient {
   }
 
   private headers(extra?: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = Object.assign({ "Content-Type": "application/json" }, extra || {});
+    const headers: Record<string, string> = Object.assign(
+      { "Content-Type": "application/json" },
+      parseExtraHeaders(this.settings.extraHeaders),
+      extra || {}
+    );
     const key = (this.settings.apiKey || "").trim();
-    if (key) headers["Authorization"] = "Bearer " + key;
+    // A user-supplied Authorization header (proxy auth) wins over the bearer key.
+    if (key && !headers["Authorization"] && !headers["authorization"]) {
+      headers["Authorization"] = "Bearer " + key;
+    }
     return headers;
   }
 

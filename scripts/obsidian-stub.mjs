@@ -51,6 +51,11 @@ export const Platform = {
   isAndroidApp: false,
 };
 
+/** Test helper: pretend to run on a phone. */
+export function setPlatform(values) {
+  Object.assign(Platform, values);
+}
+
 export function normalizePath(path) {
   const parts = [];
   for (const part of String(path == null ? "" : path).split("/")) {

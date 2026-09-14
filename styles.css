@@ -148,6 +148,20 @@ body.theme-light .hermes-statusbar {
   margin-bottom: 0;
 }
 
+.hermes-settings .hermes-callout-warn {
+  border-left-color: var(--hermes-warn);
+}
+
+.hermes-settings .hermes-callout-warn p {
+  color: var(--hermes-warn);
+}
+
+.hermes-headers-input {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
 .hermes-guide-list {
   margin: 6px 0 14px 18px;
   color: var(--hermes-muted);

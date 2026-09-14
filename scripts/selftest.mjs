@@ -59,6 +59,29 @@ test("obsidianOrigins lists the shapes a plugin can present", () => {
   assert.ok(origins.includes("capacitor://localhost"));
 });
 
+test("parseExtraHeaders reads Name: value lines and drops junk", () => {
+  const headers = hermes.parseExtraHeaders(
+    "CF-Access-Client-Id: abc.access\n# a comment\n\nX-Custom: value: with colon\nnot a header\n: no name\nEmpty:\n"
+  );
+  assert.deepEqual(headers, { "CF-Access-Client-Id": "abc.access", "X-Custom": "value: with colon" });
+  assert.deepEqual(hermes.parseExtraHeaders(""), {});
+  assert.deepEqual(hermes.parseExtraHeaders("X:  padded  "), { X: "padded" });
+});
+
+test("cleartextWarning only fires for mobile + remote plain HTTP", () => {
+  hermes.setPlatform({ isMobile: false, isDesktop: true });
+  assert.equal(hermes.cleartextWarning("http://192.168.1.10:8642/v1"), "", "desktop is never warned");
+  hermes.setPlatform({ isMobile: true, isDesktop: false });
+  assert.ok(hermes.cleartextWarning("http://192.168.1.10:8642/v1").length > 0, "LAN IP on mobile must warn");
+  assert.ok(hermes.cleartextWarning("http://hermes.local:8642").length > 0, ".local is still another machine");
+  assert.ok(hermes.cleartextWarning("http://0.0.0.0:9").length > 0);
+  assert.equal(hermes.cleartextWarning("http://127.0.0.1:8642"), "", "loopback is fine on mobile");
+  assert.equal(hermes.cleartextWarning("http://localhost:8642/v1"), "");
+  assert.equal(hermes.cleartextWarning("https://hermes.tailnet.ts.net/v1"), "", "HTTPS is the fix");
+  assert.equal(hermes.cleartextWarning(""), "");
+  hermes.setPlatform({ isMobile: false, isDesktop: true });
+});
+
 // --- file names -----------------------------------------------------------
 
 test("sanitizeFilename removes every character Obsidian cannot store", () => {
