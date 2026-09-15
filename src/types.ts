@@ -115,6 +115,12 @@ export interface HermesAgentNotesSettings {
   // --- Persistence --------------------------------------------------------
   /** Mirror the settings to a backup file next to the plugin on every change. */
   autoBackup: boolean;
+  /**
+   * Include the API key and extra headers in the *exported* settings file. Off by
+   * default: that file lands in the vault, so it is synced, backed up and easy to
+   * share by accident.
+   */
+  exportSecrets: boolean;
 }
 
 export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
@@ -155,4 +161,5 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   availableModels: [],
 
   autoBackup: true,
+  exportSecrets: false,
 };

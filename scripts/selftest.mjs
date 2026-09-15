@@ -1514,6 +1514,156 @@ test("the first changed line is where the cursor belongs", () => {
 
 // --- report ---------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// #1 an exported settings file must not carry the key
+// ---------------------------------------------------------------------------
+
+test("an exported settings file carries no key, and restoring it keeps the current one", () => {
+  const key = "k".repeat(40);
+  const settings = Object.assign({}, hermes.DEFAULT_SETTINGS, {
+    apiKey: key,
+    extraHeaders: "CF-Access-Client-Id: abc",
+    profiles: [
+      {
+        id: "profile-1",
+        name: "Pi",
+        baseUrl: "http://127.0.0.1:8642",
+        accessMode: "local",
+        profile: "obsidian",
+        apiKey: key,
+        extraHeaders: "",
+        model: "hermes-agent",
+        provider: "",
+        at: 1,
+      },
+    ],
+  });
+
+  const exported = hermes.exportableSettings(settings);
+  const blob = JSON.stringify(exported);
+  assert.ok(blob.indexOf(key) < 0, "the key is not in the exported file");
+  assert.ok(blob.indexOf("CF-Access-Client-Id") < 0, "nor are the extra headers");
+  assert.equal(exported.secretsRedacted, true, "the file says the secrets were left out");
+  assert.equal(exported.apiKey, "", "the key field is emptied, not dropped");
+
+  const full = JSON.stringify(hermes.exportableSettings(settings, { includeSecrets: true }));
+  assert.ok(full.indexOf(key) >= 0, "the opt-in still exports them");
+  assert.equal(hermes.exportableSettings(settings, { includeSecrets: true }).secretsRedacted, undefined);
+
+  // Restoring a redacted export must not blank the live key, nor the saved setup.
+  const restored = hermes.mergeImportedSettings(settings, JSON.parse(blob));
+  assert.equal(restored.settings.apiKey, key, "the key survives a restore");
+  assert.equal(restored.settings.extraHeaders, "CF-Access-Client-Id: abc", "and so do the headers");
+  assert.ok(restored.kept.indexOf("apiKey") >= 0, "the key is reported as kept");
+  assert.ok(restored.applied.indexOf("baseUrl") >= 0, "everything else still restores");
+  assert.deepEqual(restored.settings.profiles, settings.profiles, "the saved setup is not replaced by an empty key");
+
+  // A file that merely has an empty key (hand-edited, no marker) must not wipe it either.
+  const blanked = hermes.mergeImportedSettings(settings, { apiKey: "", extraHeaders: "" });
+  assert.equal(blanked.settings.apiKey, key, "an empty secret never wipes a saved one");
+  assert.ok(blanked.kept.indexOf("apiKey") >= 0);
+
+  // A file that does carry a key is imported — with a warning to delete it.
+  const imported = hermes.mergeImportedSettings(settings, { apiKey: "n".repeat(24) });
+  assert.equal(imported.settings.apiKey, "n".repeat(24));
+  assert.equal(imported.warnings.length, 1, "a file with a key is called out");
+  assert.ok(imported.warnings[0].indexOf("API key") >= 0);
+});
+
+// ---------------------------------------------------------------------------
+// #2 properties follow Obsidian's rules
+// ---------------------------------------------------------------------------
+
+test("a generated note writes dates Obsidian reads as dates", () => {
+  const fromString = hermes.serializeProperties({ created: "2026-09-14" });
+  assert.equal(fromString.text, "created: 2026-09-14", "a date is emitted unquoted (quoted = Text property)");
+  const fromDate = hermes.serializeProperties({ created: new Date(2026, 8, 14) });
+  assert.equal(fromDate.text, "created: 2026-09-14", "a parsed date never becomes an ISO timestamp");
+  assert.ok(fromDate.text.indexOf("T00:00:00") < 0, "no timezone stamp");
+  assert.equal(hermes.serializeProperties({ updated: "2026-09-14T20:14" }).text, "updated: 2026-09-14T20:14");
+
+  // Round-trip: what Obsidian's own parser sees after our serializer.
+  const parsed = hermes.roundTripProperties(fromString.text);
+  assert.equal(hermes.propertyKind(parsed.created), "date", "Obsidian reads it back as a date");
+});
+
+test("the whole note round-trips, and merging cannot invent an ISO stamp", () => {
+  const note = hermes.serializeNote({ title: "Kitchen", created: "2026-09-14", tags: ["project", "kitchen"] }, "# Kitchen\n\nBody.\n");
+  assert.ok(note.startsWith("---\n"), "frontmatter is the very first thing");
+  assert.ok(note.indexOf("created: 2026-09-14\n") >= 0, "the date stays a date");
+  assert.ok(note.indexOf("T00:00:00") < 0, "no ISO timestamp anywhere");
+  assert.ok(note.indexOf("- project") >= 0, "lists stay lists");
+  assert.equal(hermes.serializeNote({ title: "Kitchen", created: "2026-09-14", tags: ["project", "kitchen"] }, "# Kitchen\n\nBody.\n"), note, "serialising twice is identical");
+
+  // The merge path parses the existing note, so a Date object there was the bug.
+  const split = hermes.splitFrontmatter(note);
+  assert.equal(split.data.created, "2026-09-14", "parsing keeps the date as written");
+  const merged = hermes.mergeFrontmatter(split.data, { updated: "2026-09-15" });
+  assert.equal(hermes.serializeNote(merged, "body").indexOf("2026-09-14T00:00:00"), -1, "and merging never writes a timestamp");
+});
+
+test("properties Obsidian cannot store are reported and corrected", () => {
+  assert.deepEqual(hermes.propertyKind(true), "checkbox");
+  assert.deepEqual(hermes.propertyKind("2026-09-14"), "date");
+  assert.deepEqual(hermes.propertyKind(["a"]), "list");
+  assert.deepEqual(hermes.propertyKind({ a: 1 }), "unsupported");
+
+  assert.ok(hermes.isValidPropertyKey("word-count"));
+  assert.ok(hermes.isValidPropertyKey("word_count"));
+  assert.ok(!hermes.isValidPropertyKey("word count"), "Obsidian refuses spaces in property names");
+  assert.ok(!hermes.isValidPropertyKey(""));
+
+  // A name with a space, a nested object, a comma list and a wrong date format.
+  const issues = hermes
+    .checkProperties({
+      "word count": 12,
+      meta: { author: "x" },
+      tags: "project, kitchen",
+      due: "14/09/2026",
+      publish: "true",
+    })
+    .map((issue) => hermes.describePropertyIssue(issue))
+    .join(" | ");
+  assert.ok(issues.indexOf("cannot contain spaces") >= 0, "spaces in a name are flagged");
+  assert.ok(issues.indexOf("Object properties are unsupported") >= 0, "nested objects are flagged");
+  assert.ok(issues.indexOf("should be a list") >= 0, "a comma string for tags is flagged");
+  assert.ok(issues.indexOf("YYYY-MM-DD") >= 0, "a non-ISO date is flagged");
+  assert.ok(issues.indexOf("checkbox") >= 0, "a quoted boolean is flagged");
+
+  // Tags: the # goes, and a space inside a tag is a warning.
+  const tagIssues = hermes.checkProperties({ tags: ["#project", "two words"] }).map((issue) => issue.level);
+  assert.ok(tagIssues.indexOf("info") >= 0 && tagIssues.indexOf("warn") >= 0, "tag hygiene is reported");
+
+  // Raw-text checks the parsed data cannot show.
+  const raw = hermes.checkPropertyText("title: a\ntitle: b\t").map((issue) => issue.message).join(" | ");
+  assert.ok(raw.indexOf("declared 2 times") >= 0, "duplicate keys are flagged");
+  assert.ok(raw.indexOf("tab character") >= 0, "tabs are flagged");
+
+  // What a save will change.
+  const fixed = hermes.normalizeProperties({ "word count": 12, tags: "a, b", tagsx: ["#a", "#a"], meta: { a: 1 }, "": "x" });
+  assert.equal(fixed.data["word-count"], 12, "the name is repaired");
+  assert.deepEqual(fixed.data.tags, ["a", "b"], "the comma string becomes a list");
+  assert.deepEqual(fixed.data.tagsx, ["a"], "tags lose the # and duplicates");
+  assert.equal("meta" in fixed.data, false, "the object property is dropped rather than stored wrong");
+  assert.equal(fixed.data[""], undefined, "an empty name is dropped");
+  assert.ok(fixed.fixes.length >= 3, "every repair is reported: " + fixed.fixes.join("; "));
+  const checkbox = hermes.normalizeProperties({ publish: "true" });
+  assert.equal(checkbox.data.publish, true, "a quoted boolean becomes a real checkbox");
+  assert.ok(checkbox.fixes.join(" ").indexOf("checkbox") >= 0, "and is reported");
+
+  const twice = hermes.normalizeProperties(fixed.data);
+  assert.deepEqual(twice.data, fixed.data, "normalising is idempotent");
+  assert.deepEqual(twice.fixes, [], "and reports nothing the second time");
+});
+
+test("the note preview reports property problems before anything is written", () => {
+  const report = hermes.validateNote("---\nword count: 3\ncreated: '2026-09-14'\n---\n\n# Title\n", "Kitchen notes");
+  const text = report.issues.map((issue) => issue.message).join(" | ");
+  assert.ok(text.indexOf("cannot contain spaces") >= 0, "the preview names the bad property");
+  assert.ok(text.indexOf("Corrected when saved") >= 0, "and says the save will fix it");
+  assert.ok(text.indexOf("Properties present and parseable") >= 0, "the good news stays");
+});
+
 console.log("selftest: " + passed + " passed, " + failed + " failed");
 if (failures.length > 0) {
   console.log("\nFailures:");

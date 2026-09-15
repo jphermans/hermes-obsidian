@@ -8,6 +8,7 @@
  */
 
 import { App, parseYaml } from "obsidian";
+import { isDateOnly, reviveProperties, todayLocal } from "./properties";
 import type { FrontmatterKeyInfo, VaultConventions } from "./types";
 
 export interface FrontmatterSplit {
@@ -45,7 +46,9 @@ export function splitFrontmatter(input: string): FrontmatterSplit {
   try {
     const parsed = parseYaml(raw);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      data = parsed as Record<string, unknown>;
+      // YAML turns `created: 2026-09-14` into a JS Date; re-serialising that writes
+      // 2026-09-14T00:00:00.000Z. Keep dates as the strings Obsidian stores.
+      data = reviveProperties(parsed as Record<string, unknown>);
     }
   } catch {
     data = null;
@@ -57,6 +60,7 @@ export function splitFrontmatter(input: string): FrontmatterSplit {
 export function typeName(value: unknown): string {
   if (Array.isArray(value)) return "list";
   if (value instanceof Date) return "date";
+  if (typeof value === "string" && isDateOnly(value)) return "date";
   if (typeof value === "number") return "number";
   if (typeof value === "boolean") return "boolean";
   if (value && typeof value === "object") return "map";
@@ -365,7 +369,7 @@ function describeTagStyle(tags: string[], inFrontmatter: number, inline: number)
 }
 
 export function defaultFrontmatterTemplate(conventions: VaultConventions | null): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const lines: string[] = ["---"];
   const used = new Set<string>();
   const keys = conventions && conventions.keys.length > 0 ? conventions.keys : [];

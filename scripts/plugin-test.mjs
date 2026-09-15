@@ -158,7 +158,23 @@ await test("export writes a visible settings file into the vault", async () => {
   assert.equal(exported.plugin, "hermes-agent-notes");
   assert.equal(typeof exported.exportedAt, "string");
   assert.equal(exported.baseUrl, server.baseUrl);
-  assert.equal(exported.apiKey, "test-key");
+  // The vault file is the one that gets synced and shared, so it carries no key.
+  assert.equal(exported.apiKey, "", "the exported file must not contain the API key");
+  assert.equal(exported.secretsRedacted, true);
+});
+
+await test("the exported file carries the key only when asked, and the backup always does", async () => {
+  const plugin = await makePlugin();
+  plugin.settings.exportSecrets = true;
+  const path = await plugin.exportSettings();
+  const exported = JSON.parse(await app.vault.adapter.read(path));
+  assert.equal(exported.apiKey, "test-key", "the opt-in exports the key");
+  assert.equal(exported.secretsRedacted, undefined);
+
+  plugin.settings.exportSecrets = false;
+  await plugin.writeBackup();
+  const backup = JSON.parse(await app.vault.adapter.read(plugin.backupPath()));
+  assert.equal(backup.apiKey, "test-key", "the automatic backup keeps the key — it never leaves the plugin folder");
 });
 
 await test("the automatic backup fires after a change, debounced", async () => {

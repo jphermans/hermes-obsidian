@@ -6,6 +6,8 @@
  * file-name characters.
  */
 
+import { checkProperties, checkPropertyText, describePropertyIssue, normalizeProperties } from "./properties";
+import type { PropertyIssue } from "./properties";
 import { countOccurrences, headingLevel, splitFrontmatter } from "./vault-rules";
 import { isBadFilenameChar } from "./note-writer";
 import type { VaultConventions } from "./types";
@@ -65,6 +67,8 @@ function hasCurlyQuote(text: string): boolean {
 export function validateNote(content: string, filename: string, conventions: VaultConventions | null): NoteCheck {
   const issues: NoteIssue[] = [];
   const split = splitFrontmatter(content);
+  // A missing name must report, not throw: this runs while the preview is being built.
+  const name = typeof filename === "string" ? filename : "";
   const body = split.present ? split.body : content;
 
   let headings = 0;
@@ -100,11 +104,11 @@ export function validateNote(content: string, filename: string, conventions: Vau
   };
 
   // --- file name ---------------------------------------------------------
-  if (!filename.trim()) {
+  if (!name.trim()) {
     issues.push({ level: "warn", message: "The note needs a file name." });
   } else {
     let badCharacters: string[] = [];
-    for (const character of filename) {
+    for (const character of name) {
       if (isBadFilenameChar(character.codePointAt(0) || 0)) badCharacters.push(character);
     }
     if (badCharacters.length > 0) {
@@ -113,21 +117,23 @@ export function validateNote(content: string, filename: string, conventions: Vau
         message: "File name contains characters Obsidian cannot store: " + badCharacters.join(" ") + " — they will be removed.",
       });
     }
-    if (filename.length > 100) {
+    if (name.length > 100) {
       issues.push({ level: "warn", message: "File name is longer than 100 characters; wikilinks to it will be unreadable." });
     }
-    if (filename.charAt(0) === "." || filename.endsWith(".") || filename !== filename.trim()) {
+    if (name.charAt(0) === "." || name.endsWith(".") || name !== name.trim()) {
       issues.push({ level: "warn", message: "File names may not start or end with a dot or a space." });
     }
-    if (/^(untitled|new note|note)$/i.test(filename.trim())) {
+    if (/^(untitled|new note|note)$/i.test(name.trim())) {
       issues.push({ level: "info", message: "Consider a descriptive file name — this one will be hard to find later." });
     }
   }
 
   // --- frontmatter -------------------------------------------------------
   const looksLikeFrontmatter = content.trimStart().startsWith("---");
-  if (split.raw.indexOf("\t") >= 0) {
-    issues.push({ level: "warn", message: "The frontmatter contains a tab character; YAML requires spaces." });
+  // Raw-text checks (tabs, duplicate keys, an empty block) live in one place so the
+  // preview and the writer agree on what Obsidian can store.
+  for (const issue of checkPropertyText(split.raw)) {
+    issues.push({ level: issue.level === "info" ? "info" : "warn", message: describePropertyIssue(issue) });
   }
   if (looksUnparsed(looksLikeFrontmatter, split.present)) {
     issues.push({
@@ -137,6 +143,13 @@ export function validateNote(content: string, filename: string, conventions: Vau
   } else if (split.present && split.data) {
     const keys = Object.keys(split.data);
     issues.push({ level: "ok", message: "Properties present and parseable: " + (keys.length > 0 ? keys.join(", ") : "none") });
+    for (const issue of checkProperties(split.data)) {
+      issues.push({ level: issue.level === "info" ? "info" : "warn", message: describePropertyIssue(issue) });
+    }
+    const fixes = normalizeProperties(split.data).fixes;
+    if (fixes.length > 0) {
+      issues.push({ level: "info", message: "Corrected when saved: " + fixes.join("; ") + "." });
+    }
     const known = conventions && conventions.keys.length > 0 ? new Set(conventions.keys.map((key) => key.key)) : null;
     if (known) {
       const novel = keys.filter((key) => !known.has(key));

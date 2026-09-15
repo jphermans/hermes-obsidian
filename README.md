@@ -75,7 +75,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 
 The setup page is **tabbed** — *Connection · Remote access · Notes · Chat & prompts · Backup & errors · Setup guide* — and remembers the tab you were last on, so no view is a wall of settings. The installed build is a label at the top of every tab.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.33** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.34** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -531,7 +531,22 @@ A job that fails does not strand the queue — the ones behind it still run.
 
 A model that knows Markdown still gets Obsidian wrong, so the plugin does two things.
 
-**It carries the Obsidian format rules** — `---` YAML properties with no tabs and real date/boolean types, one H1 then H2/H3 without skipping levels, `[[Wikilinks]]` instead of `[path](note.md)`, `[[Note|alias]]`, `[[Note#Heading]]`, `[[Note#^block]]`, `![[embeds]]`, nested `#tag/child`, `> [!note]` callouts, two-space list nesting, `- [ ]` tasks, tables, fenced code with a language, straight quotes, and the file-name characters Obsidian refuses to store.
+**It carries the Obsidian format rules** — `---` YAML properties with no tabs, one H1 then H2/H3 without skipping levels, `[[Wikilinks]]` instead of `[path](note.md)`, `[[Note|alias]]`, `[[Note#Heading]]`, `[[Note#^block]]`, `![[embeds]]`, nested `#tag/child`, `> [!note]` callouts, two-space list nesting, `- [ ]` tasks, tables, fenced code with a language, straight quotes, and the file-name characters Obsidian refuses to store.
+
+**Property values are written the way Obsidian reads them**, which is stricter than valid YAML:
+
+| Written | Obsidian sees |
+| --- | --- |
+| `created: 2026-09-14` | a Date |
+| `created: '2026-09-14'` | **text** — quoting a date loses its type, so dates are never quoted |
+| `publish: true` | a checkbox (`"true"` would be text) |
+| `tags:` then `- project` | a list of tags (`tags: project, kitchen` is one text value) |
+| `#project` inside `tags` | the `#` is dropped — Obsidian adds it when rendering |
+| `word-count` | a valid name (`word count` is refused: names allow only letters, digits, `_`, `-`) |
+| `related:` then `- "[[Note]]"` | a link list — the quotes are required, `[` starts a list |
+| a nested map under a key | unsupported, so it is dropped rather than stored broken |
+
+Dates are stored exactly as written, never rewritten as a UTC timestamp (`2026-09-14T00:00:00.000Z`), and `created` uses **your** local date rather than UTC, so a note made at 01:00 in Brussels is not dated yesterday. Every note is checked before it is written: property/word/link counts, balanced `[[ ]]`, `.md` links that should be wikilinks, heading level jumps, tabs in YAML, unparsed frontmatter, illegal file-name characters — plus the property rules above, where the preview says what a save will correct (*"Corrected when saved: turned “tags” into a list; unquoted a date"*) and warns about what it cannot know, such as `due: 14/09/2026`, which it reports as unusable because Obsidian only recognises `YYYY-MM-DD`.
 
 **It learns your vault first** — which properties you use and their types, whether values are quoted, tag style, wikilink versus Markdown links, whether notes open with an H1, your file-name style, the callouts you actually use, and the notes in the target folder so wikilinks point at real notes.
 
@@ -600,12 +615,12 @@ Settings normally live in `<vault>/.obsidian/plugins/hermes-agent-notes/data.jso
 
 | File | Where | Purpose |
 | --- | --- | --- |
-| Automatic backup | `.obsidian/plugins/hermes-agent-notes/settings-backup.json` | Written (debounced, ~1.2 s) after every settings change when *Automatic backup file* is on — the default. Recovers your setup if the plugin folder is wiped by a reinstall or a sync conflict. |
-| Exported settings | `<default folder>/Hermes Agent Notes settings.json` | Written only when you press **Export to the vault**. A visible file you can read, version or move between machines. |
+| Automatic backup | `.obsidian/plugins/hermes-agent-notes/settings-backup.json` | Written (debounced, ~1.2 s) after every settings change when *Automatic backup file* is on — the default. Recovers your setup if the plugin folder is wiped by a reinstall or a sync conflict. | 
+| Exported settings | `<default folder>/Hermes Agent Notes settings.json` | Written only when you press **Export to the vault**. A visible file you can read, version or move between machines. **Your API key and extra headers are left out** unless you turn on *Put the API key in the exported file*. |
 
 **Restore** — either pick a JSON file from the vault (**Restore from a file…**) or read the automatic backup back (**Restore automatic backup**). Imports are validated: unknown keys and values of the wrong type are skipped and reported in the notice, so a stale or hand-edited file cannot half-break your setup. Caches (the vault analysis, the last connection state) are never exported or imported — they are rebuilt.
 
-Both files contain your **API key and any extra headers** in plain text, because that is the point of a backup. Keep the vault (and anything synced from it) private, or export to a folder you control.
+**Where the key lives.** The automatic backup keeps your **API key and any extra headers** in plain text: it sits next to the plugin's own data file, in the same folder, with the same exposure — that is what makes it a restore. The **exported** file is the one that lands in the vault, so it is synced and easy to share by accident: by default it contains every setting *except* the key and the headers, and it says so (`secretsRedacted`). Restoring such a file keeps your current key rather than blanking it, and restoring a file that *does* carry a key tells you to delete that file if you shared it. Keep the vault private either way.
 
 ## Troubleshooting
 

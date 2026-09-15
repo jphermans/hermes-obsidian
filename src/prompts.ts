@@ -37,10 +37,18 @@ Output contract
 - Never wrap the whole note in a code fence. Fenced blocks are only for code that belongs inside the note.
 
 Properties (frontmatter)
-- Frontmatter, when used, is the first thing in the file: a line containing exactly --- , then YAML, then a closing --- line.
-- YAML syntax only: key: value . No tabs, ever. Use two-space indentation for nested maps.
-- Booleans are true / false (lowercase). Dates are YYYY-MM-DD . Numbers are unquoted. Text with a colon or a leading special character is quoted.
-- Lists are either block style (key: followed by indented lines starting with - ) or inline (key: [a, b]) — match the vault.
+- Frontmatter, when used, is the first thing in the file: a line containing exactly --- , then YAML, then a closing --- line. Nothing before it, not even a blank line.
+- YAML syntax only: key: value . No tabs, ever. Use two-space indentation.
+- Property names may contain only letters, digits, _ and - . Never a space, never punctuation: write word-count , not "word count".
+- Never repeat a key, and never nest a map or a list of maps under a key — Obsidian shows objects as an invalid value. Use a list of text values instead.
+- Every property value is one of: text, list, number, checkbox, date. Make the shape obvious:
+  - Checkboxes are bare true / false — "true" in quotes is text, not a checkbox.
+  - Numbers are unquoted: 12 , not "12".
+  - Dates are YYYY-MM-DD and datetimes YYYY-MM-DDTHH:MM , both unquoted. A quoted date is text, not a Date property.
+  - Lists are real YAML lists — inline ( tags: [a, b] ) or block ( tags: on its own line, then indented - a lines). Never one comma-separated line: tags: a, b is a single text value.
+  - tags, aliases and cssclasses are always lists, and tag entries carry no # : write project/kitchen , not #project/kitchen . Tags contain no spaces.
+  - A wikilink inside a property is quoted, because [ starts a list: related: then - "[[Note Name]]" .
+  - Quote any text value containing : # [ ] { } or a leading/trailing space, or starting with - ? * & ! | > % @ \` .
 - Reuse the vault's existing property names and casing. Do not invent near-duplicates such as created vs Date.
 
 Headings

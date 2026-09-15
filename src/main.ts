@@ -258,7 +258,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
   async writeBackup(): Promise<void> {
     try {
       const path = this.backupPath();
-      await this.app.vault.adapter.write(path, JSON.stringify(exportableSettings(this.settings), null, 2) + "\n");
+      await this.app.vault.adapter.write(path, JSON.stringify(exportableSettings(this.settings, { includeSecrets: true }), null, 2) + "\n");
       this.lastBackupAt = Date.now();
     } catch (error) {
       console.warn("[Hermes Agent Notes] settings backup failed", error);
@@ -270,7 +270,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
     const path = settingsExportPath(this.settings.defaultFolder);
     const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
     if (folder) await ensureFolder(this.app, folder);
-    await this.app.vault.adapter.write(path, JSON.stringify(exportableSettings(this.settings), null, 2) + "\n");
+    await this.app.vault.adapter.write(path, JSON.stringify(exportableSettings(this.settings, { includeSecrets: this.settings.exportSecrets }), null, 2) + "\n");
     return path;
   }
 
@@ -320,8 +320,10 @@ export default class HermesAgentNotesPlugin extends Plugin {
     new Notice(
       "Restored " + result.applied.length + " setting" + (result.applied.length === 1 ? "" : "s") + " from " + source +
         (result.errors.length > 0 ? " — skipped: " + result.errors.join("; ") : "") +
+        (result.kept.length > 0 ? " — your current " + result.kept.join(" and ") + " was kept (that file has no secrets in it)" : "") +
+        (result.warnings.length > 0 ? " — heads-up: " + result.warnings.join("; ") : "") +
         (result.ignored.length > 0 ? " (" + result.ignored.length + " unrecognised key(s) ignored)" : ""),
-      9000
+      12000
     );
   }
 
