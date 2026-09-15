@@ -1,7 +1,7 @@
 {
   "id": "hermes-agent-notes",
   "name": "Hermes Agent Notes",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "minAppVersion": "1.5.0",
   "description": "Create and fix Markdown notes with a Hermes Agent instance (local or remote), following your vault's own Obsidian conventions.",
   "author": "JPHsystems",

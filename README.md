@@ -75,7 +75,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 
 The setup page is **tabbed** — *Connection · Remote access · Notes · Chat & prompts · Backup & errors · Setup guide* — and remembers the tab you were last on, so no view is a wall of settings. The installed build is a label at the top of every tab.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.36** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.37** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -557,6 +557,21 @@ Three further rules from the same page are enforced:
 
 
 Dates are stored exactly as written, never rewritten as a UTC timestamp (`2026-09-14T00:00:00.000Z`), and `created` uses **your** local date rather than UTC, so a note made at 01:00 in Brussels is not dated yesterday. Every note is checked before it is written: property/word/link counts, balanced `[[ ]]`, `.md` links that should be wikilinks, heading level jumps, tabs in YAML, unparsed frontmatter, illegal file-name characters — plus the property rules above, where the preview says what a save will correct (*"Corrected when saved: turned “tags” into a list; unquoted a date"*) and warns about what it cannot know, such as `due: 14/09/2026`, which it reports as unusable because Obsidian only recognises `YYYY-MM-DD`.
+
+**The rest of the documented syntax is checked the same way**, from [help.obsidian.md/syntax](https://help.obsidian.md/syntax), [/advanced-syntax](https://help.obsidian.md/advanced-syntax), [/callouts](https://help.obsidian.md/callouts), [/links](https://help.obsidian.md/links) and [/embeds](https://help.obsidian.md/embeds) — each pointing at the line:
+
+| Checked | Why |
+| --- | --- |
+| `[^1]` has a `[^1]: …` definition | an orphan reference renders as plain text; an unused definition is reported too |
+| `%% … %%` is closed | everything after an unclosed comment is hidden |
+| `---` not directly under text | there it is a heading underline, not a horizontal rule — use `***` or a blank line above |
+| a URL with a space is `%20` or `<angle brackets>` | otherwise the link breaks |
+| tables: ≥2 hyphens per column, `\|` for a pipe inside a link in a cell, no blank line inside | each one silently breaks the table |
+| callouts use a documented type | an invented type renders as `[!note]`; the aliases (`tldr`, `important`, `faq`, `caution`, `error`, `cite` …) are accepted |
+| block identifiers `^like-this` | letters, numbers and dashes only, at the end of the line |
+| the link target avoids `# \| ^ : %%` and brackets | Obsidian may not resolve such a link |
+
+Code is skipped by all of it — a `---` or a `%%` inside a fenced block is content, not syntax. The prompt carries the same rules, so the agent is asked to get it right the first time: highlights `==text==`, strikethrough, escaping with a backslash (`\*`, `\|`, and `1\.` for a numbered line that is not a list), nested lists indented with a tab (or two spaces under `- ` and three under `1. `), `1.` versus `1)`, footnote and comment forms, HTML blocks, and maths as `$…$` or `$$…$$`.
 
 **It learns your vault first** — which properties you use and their types, whether values are quoted, tag style, wikilink versus Markdown links, whether notes open with an H1, your file-name style, the callouts you actually use, and the notes in the target folder so wikilinks point at real notes.
 

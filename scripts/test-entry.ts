@@ -16,6 +16,7 @@ export * from "../src/error-log";
 export * from "../src/prompts";
 export * from "../src/vault-rules";
 export * from "../src/properties";
+export * from "../src/markdown-rules";
 export * from "../src/note-writer";
 export * from "../src/validate";
 export { transportLabel } from "../src/ui/chat-view";

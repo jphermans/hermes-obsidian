@@ -65,12 +65,16 @@ Headings
 
 Links
 - Internal links are wikilinks: [[Note Name]] . Never [[Note Name.md]] , never a relative file path, never a URL for something inside the vault.
-- Display text: [[Note Name|Shown text]] . Section: [[Note Name#Heading]] . Block reference: [[Note Name#^block-id]] .
+- Display text: [[Note Name|Shown text]] . Heading: [[Note Name#Heading]] ; a subheading adds another hash ( [[Note Name#Heading#Subheading]] ) and [[#Heading]] links inside the same note. Block: [[Note Name#^block-id]] .
+- A note inside a folder keeps the folder in the path, starting at the vault root, with forward slashes: [[Folder/Note Name]] .
+- A link target must not contain # | ^ : %% or square brackets — Obsidian may not resolve such a link.
+- A block identifier is ^id at the end of a line, after a space; for a list, quote, callout or table put it on its own line with a blank line before and after. It may contain only Latin letters, numbers and dashes ( ^quote-of-the-day ).
 - Link only to notes that exist in the vault list you were given, unless asked to plan a future note.
-- External links use standard Markdown: [label](https://example.com) .
+- External links use standard Markdown: [label](https://example.com) . A space inside the URL must be written as %20 , or the whole URL wrapped in angle brackets: [label](<https://example.com/a b>) .
 
 Embeds
-- ![[Note Name]] embeds a note, ![[Note Name#Heading]] embeds a section, ![[picture.png]] embeds an attachment, ![[picture.png|300]] sets a width.
+- ![[Note Name]] embeds a note, ![[Note Name#Heading]] embeds a section, ![[Note Name#^block-id]] embeds a block, ![[picture.png]] embeds an attachment, ![[Document.pdf#page=3]] opens a PDF at a page.
+- Size an embedded attachment with |width or |widthxheight : ![[picture.png|300]] , ![[picture.png|300x200]] . The same works for an external image: ![250](https://example.com/photo.jpg) .
 
 Tags
 - Tags contain no spaces and no punctuation beyond / and - : #project/kitchen , #status-active .
@@ -78,17 +82,35 @@ Tags
 
 Callouts and blockquotes
 - Callout syntax: a line starting with > [!type] optional title , then the body as following > lines. Use only callout types the vault already uses when the vault uses callouts.
+- The types are note, abstract (alias summary, tldr), info, todo, tip (hint, important), success (check, done), question (help, faq), warning (caution, attention), failure (fail, missing), danger (error), bug, example, quote (cite). Any other type silently renders as note, so do not invent one.
+- A title is optional (a title-only callout is fine) and without one Obsidian shows the type in title case. Put + or - straight after the type to have it expanded or collapsed at first: > [!faq]- Are callouts foldable? .
 - Plain quotes are > lines without the [!type] marker.
 
 Lists, tasks, tables
-- Unordered lists use - plus a space. Ordered lists use 1. plus a space. Nested items are indented by two spaces per level.
-- Task items are - [ ] todo and - [x] done .
-- Tables need a header row, a separator row of dashes, and one pipe per column. Keep every cell on a single line.
+- Unordered lists use - plus a space ( * and + also work; stay with - ). Ordered lists use 1. or 1) plus a space.
+- Nest a list item with a tab — what Obsidian inserts — or align it under the item's text: two spaces under - , three under 1. .
+- Task items are - [ ] todo and - [x] done . Any character inside the brackets marks a task done ( [?] , [-] ), so never leave the brackets empty by accident.
+- Tables need a header row, a separator row of dashes with at least two hyphens per column ( -- | -- ), and one pipe per column. Keep every cell on a single line and leave no blank line inside a table — it breaks it.
+- Inside a table cell escape a pipe as \| , which is required for an alias or a resized embed: [[Other note\|display text]] and ![[image.png\|200]] .
+- Align a column by putting colons in the separator row: :-- left, :-: centre, --: right.
+
+Formatting
+- Bold **text** , italics *text* , bold italics ***text*** , highlight ==text== , strikethrough ~~text~~ . Never use any of them as a heading substitute.
+
+Footnotes and comments
+- A footnote reference is [^1] and its definition is a line [^1]: the text . A footnote that runs on indents its next line by two spaces. Named footnotes ( [^note] ) work and are easier to keep track of. Inline footnotes, ^[like this] , only render in reading view.
+- A comment is %%hidden%% or a block on its own lines between %% markers. Comments never render, so put nothing the reader needs inside one.
+
+HTML and line breaks
+- Obsidian does not render Markdown inside HTML tags: do not wrap Markdown in <div> , <span> or any other tag, and keep an HTML block free of blank lines.
+- Separate paragraphs with a blank line; a single newline continues the same paragraph. Two trailing spaces make a line break inside one paragraph.
+- A horizontal rule is *** , --- or ___ on its own line, and it needs a blank line above it: --- directly under a line of text turns that line into a heading instead.
 
 Code and math
-- Fenced code blocks carry a language tag, for example ${FENCE}ts . Inline code uses single backticks.
+- Fenced code blocks carry a language tag, for example ${FENCE}ts ; three or more backticks or tildes both work, and a fence inside a fence has to be longer than the one around it. Inline code uses single backticks.
+- Math uses $inline$ or $$display$$ , with the $$ on its own line for a display block. Math is not processed inside code blocks.
 - Use straight quotes and straight apostrophes only. Never use curly or typographic quotes.
-- Math is $inline$ or $$display$$ . Never put currency amounts inside $...$ without escaping the risk — prefer writing amounts plainly.
+- Escape a character that must show literally with a backslash: \* \_ \# \| \~ and \` . A numbered list item that is meant as plain text escapes the period, not the number: 1\. . Never put currency amounts inside $...$ without escaping the risk — prefer writing amounts plainly.
 
 File names
 - A file name may not contain any of these characters: forward slash, backslash, colon, asterisk, question mark, double quote, less-than, greater-than, pipe, hash, caret, or square brackets.

@@ -15,6 +15,7 @@ import {
   vaultTypeMap,
 } from "./properties";
 import type { PropertyIssue } from "./properties";
+import { checkMarkdown, knownCalloutTypes } from "./markdown-rules";
 import { countOccurrences, headingLevel, splitFrontmatter } from "./vault-rules";
 import { isBadFilenameChar } from "./note-writer";
 import type { VaultConventions } from "./types";
@@ -96,6 +97,13 @@ export function validateNote(content: string, filename: string, conventions: Vau
     if (level === 1) h1Count++;
     if (previousLevel > 0 && level > previousLevel + 1) levelJump = true;
     previousLevel = level;
+  }
+
+  // The rest of the documented Markdown (help.obsidian.md/syntax and friends): footnotes,
+  // comments, the `---` heading trap, URLs with spaces, table traps, invented callout types,
+  // block identifiers and link targets.
+  for (const issue of checkMarkdown(body, { calloutTypes: knownCalloutTypes() })) {
+    issues.push({ level: issue.level, message: issue.line ? "Line " + issue.line + ": " + issue.message : issue.message });
   }
 
   const stats: NoteStats = {

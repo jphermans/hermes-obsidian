@@ -1845,6 +1845,112 @@ test("one malformed line cannot drop every property in the note", () => {
   assert.equal(hopeless.recovered, undefined);
 });
 
+// ---------------------------------------------------------------------------
+// The rest of the documented Markdown (help.obsidian.md/syntax and friends)
+// ---------------------------------------------------------------------------
+
+test("the documented syntax checks: footnotes, comments and the --- trap", () => {
+  const msgs = (body, options) => hermes.checkMarkdown(body, options).map((issue) => issue.message).join(" | ");
+
+  // Footnotes: a reference needs a definition, and the docs' own example passes.
+  const good = "This is a simple footnote[^1].\n\n[^1]: This is the referenced text.\n[^2]: Add 2 spaces at the start of each new line.\n  This lets you write footnotes that span multiple lines.\n";
+  assert.equal(hermes.checkMarkdown(good).filter((issue) => issue.level === "warn").length, 0, "the documented footnote example is clean: " + msgs(good));
+  assert.ok(msgs("A claim[^1] with no definition.\n").indexOf("has no definition") >= 0, "an orphan reference is reported");
+  assert.ok(msgs("[^unused]: a definition nobody references.\n").indexOf("never referenced") >= 0, "an orphan definition is reported");
+
+  // Comments: %% must be closed.
+  assert.equal(hermes.checkMarkdown("This is an %%inline%% comment.\n").length, 0);
+  assert.ok(msgs("Text %%\nblock comment\n").indexOf("never closed") >= 0, "an unclosed comment is reported");
+
+  // A rule directly under text becomes a heading instead.
+  assert.ok(msgs("Some text\n---\n").indexOf("reads the line above as a heading") >= 0, "--- under text is the trap");
+  assert.equal(hermes.checkMarkdown("Some text\n\n---\n").length, 0, "a blank line above --- makes it a real rule");
+  assert.equal(hermes.checkMarkdown("Some text\n\ntitle\n===\n").length - 1, 0, "=== under text is the same trap (blank line fixes it)");
+});
+
+test("the documented syntax checks: URLs, tables and links", () => {
+  const msgs = (body) => hermes.checkMarkdown(body).map((issue) => issue.message).join(" | ");
+
+  // External links: a space must be %20 or the URL wrapped in < >.
+  assert.ok(msgs("[label](https://example.com/a b)\n").indexOf("%20") >= 0, "a raw space in a URL is reported");
+  assert.equal(hermes.checkMarkdown("[label](https://example.com/a%20b)\n").length, 0);
+  assert.equal(hermes.checkMarkdown("[label](<https://example.com/a b>)\n").length, 0, "angle brackets are the documented alternative");
+
+  // Tables: two hyphens minimum, escaped pipes, no blank line inside.
+  assert.ok(msgs("a | b\n- | -\n1 | 2\n").indexOf("at least two hyphens") >= 0, "a one-hyphen separator is reported");
+  assert.equal(hermes.checkMarkdown("First name | Last name\n-- | --\nMax | Planck\n").filter((issue) => issue.level === "warn").length, 0, "the documented table is clean");
+  assert.ok(
+    msgs("First column | Second column\n-- | --\n[[Basic formatting syntax|Markdown syntax]] | x\n").indexOf("must be escaped") >= 0,
+    "an unescaped pipe in a table cell is reported"
+  );
+  assert.equal(
+    hermes.checkMarkdown("First column | Second column\n-- | --\n[[Basic formatting syntax\\|Markdown syntax]] | ![[Engelbart.jpg\\|200]]\n").filter((issue) => issue.level === "warn").length,
+    0,
+    "the documented escaping is clean"
+  );
+  assert.ok(msgs("a | b\n-- | --\n1 | 2\n\n3 | 4\n").indexOf("blank line inside a table") >= 0, "a blank line inside a table is reported");
+  assert.ok(msgs("a | b\n:-- | --:\n1 | 2\n").indexOf("at least two hyphens") < 0, "colons for alignment are fine");
+
+  // Callouts: documented types and their aliases only — anything else falls back to note.
+  assert.equal(hermes.checkMarkdown("> [!info] Title\n> Body\n").length, 0);
+  assert.equal(hermes.checkMarkdown("> [!tldr] Summary\n> Body\n").length, 0, "the alias tldr is accepted");
+  assert.ok(msgs("> [!important] Note\n").indexOf("not a callout type") < 0, "important is an alias of tip");
+  assert.ok(msgs("> [!made-up] Something\n").indexOf("renders it as [!note]") >= 0, "an invented type is reported");
+  assert.equal(hermes.checkMarkdown("> [!warning] Custom title\n").length, 0);
+
+  // Block identifiers: Latin letters, numbers and dashes only.
+  assert.equal(hermes.checkMarkdown("A quote ^quote-of-the-day\n").length, 0, "the documented block id is clean");
+  // The identifier has to be the last thing on the line, so a caret in the middle of a
+  // sentence is not a block id at all — nothing to report.
+  assert.equal(hermes.checkMarkdown("A caret ^ in the middle of a sentence.\n").length, 0, "a mid-line caret is not a block id");
+  assert.ok(msgs("A quote ^id!\n").indexOf("Latin letters, numbers and dashes") >= 0, "punctuation in a block id is reported");
+  assert.ok(msgs("A quote ^id_with-underscores\n").indexOf("Latin letters, numbers and dashes") >= 0, "an underscore is not allowed either");
+
+  // Link targets: the documentation's own list of characters to avoid.
+  assert.equal(hermes.checkMarkdown("[[Folder/Three laws of motion]]\n").length, 0, "a folder path is clean");
+  assert.equal(hermes.checkMarkdown("[[Note#Heading|Display text]]\n").length, 0, "display text on a heading link is clean");
+  assert.ok(msgs("[[Note: part 2]]\n").indexOf("may not resolve") >= 0, "a colon in a link target is reported");
+  assert.ok(msgs("[[100% ^ of it]]\n").indexOf("may not resolve") >= 0, "a caret in a link target is reported");
+
+  // An escaped pipe outside a table shows the backslash.
+  assert.ok(hermes.checkMarkdown("See ![[image.png\\|200]] in the text.\n").map((i) => i.message).join(" ").indexOf("outside a table") >= 0);
+});
+
+test("rules inside code blocks are not applied to the note", () => {
+  const body = ["Here is a fence:", "", "```ts", "// Some text", "---", "%% not a comment %%", "a | b", "- | -", "```", "", "Done.", ""].join("\n");
+  assert.deepEqual(hermes.checkMarkdown(body).filter((issue) => issue.level === "warn"), [], "nothing inside the fence is reported");
+  // But a fence with no language is worth a mention.
+  const fence = ["```", "plain", "```", ""].join("\n");
+  assert.ok(hermes.checkMarkdown(fence).map((issue) => issue.message).join(" ").indexOf("no syntax highlighting") >= 0);
+  // And inline code is skipped too.
+  assert.deepEqual(hermes.checkMarkdown("Write `---` to make a rule.\n").filter((i) => i.level === "warn"), []);
+});
+
+test("the documented syntax checks reach the note preview", () => {
+  const note = [
+    "---",
+    "title: Kitchen",
+    "---",
+    "",
+    "# Kitchen",
+    "",
+    "A claim[^1] that needs a source.",
+    "",
+    "Text %%",
+    "",
+    "a | b",
+    "- | -",
+    "1 | 2",
+    "",
+  ].join("\n");
+  const report = hermes.validateNote(note, "Kitchen", null);
+  const text = report.issues.map((issue) => issue.message).join(" | ");
+  assert.ok(text.indexOf("Line ") >= 0, "the preview points at the line: " + text);
+  assert.ok(text.indexOf("has no definition") >= 0, "the footnote problem is there");
+  assert.ok(text.indexOf("never closed") >= 0, "the comment problem is there");
+  assert.ok(text.indexOf("at least two hyphens") >= 0, "the table problem is there");
+});
+
 console.log("selftest: " + passed + " passed, " + failed + " failed");
 if (failures.length > 0) {
   console.log("\nFailures:");
