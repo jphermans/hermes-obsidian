@@ -527,6 +527,28 @@ test("no route tells the user to config-set an environment variable", () => {
   );
 });
 
+test("a prefixed profile warns before a short key can 401", () => {
+  const short = hermes.apiKeyAdvice("obsidian", "36a20fc268"); // 10 characters
+  assert.ok(short, "a 10-character key under a prefix must warn");
+  assert.ok(short.includes("10 characters"), short);
+  assert.ok(short.includes("16"), "must name the floor: " + short);
+  assert.ok(short.includes("openssl rand"), "must say how to make a usable one");
+  assert.ok(short.includes("/p/obsidian"), "must name the prefix it applies to");
+
+  const missing = hermes.apiKeyAdvice("obsidian", "");
+  assert.ok(missing && missing.includes("profiles/obsidian/.env"), "an empty key names the profile's .env");
+
+  // No prefix (or an explicit default) means the default scope, which has no such floor.
+  assert.equal(hermes.apiKeyAdvice("", "short"), null);
+  assert.equal(hermes.apiKeyAdvice("default", "short"), null);
+  assert.equal(hermes.apiKeyAdvice("DEFAULT", "short"), null);
+
+  // 16 characters is the boundary: exactly 16 passes, 15 does not.
+  assert.equal(hermes.apiKeyAdvice("obsidian", "a".repeat(16)), null);
+  assert.ok(hermes.apiKeyAdvice("obsidian", "a".repeat(15)));
+  assert.equal(hermes.MIN_PROFILED_KEY_LENGTH, 16);
+});
+
 test("presetFor falls back to local for an unknown mode", () => {
   assert.equal(hermes.presetFor("nonsense").id, "local");
   assert.equal(hermes.presetFor(undefined).id, "local");

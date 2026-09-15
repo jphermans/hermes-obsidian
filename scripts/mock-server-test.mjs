@@ -117,6 +117,9 @@ await test("a wrong key is reported as an auth error with the fix in the message
       assert.equal(error.kind, "auth");
       assert.equal(error.status, 401);
       assert.ok(/API_SERVER_KEY/.test(error.message), error.message);
+      // The multiplexed-profile case is invisible otherwise: a key under 16 characters
+      // can never match a URL-selected profile, so name it in the message.
+      assert.ok(/16 characters/.test(error.message), "the 401 must mention the profile key floor: " + error.message);
       return true;
     }
   );

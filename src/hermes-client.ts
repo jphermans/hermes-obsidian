@@ -262,7 +262,9 @@ function httpError(status: number, body: string, url: string): HermesError {
   const detail = firstLine(body) || "no response body";
   if (status === 401 || status === 403) {
     return new HermesError(
-      "Hermes rejected the request (HTTP " + status + "). The API key does not match API_SERVER_KEY on the Hermes host.",
+      "Hermes rejected the request (HTTP " +
+        status +
+        "). The API key does not match API_SERVER_KEY on the Hermes host. Under gateway.multiplex_profiles a URL-selected profile (/p/<name>) also only accepts a key of at least 16 characters — a shorter one is treated as unusable and answers 401 whatever is sent.",
       "auth",
       status
     );

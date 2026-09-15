@@ -73,7 +73,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 >
 > The setup page stays short on purpose: the per-route recipes live behind the **How do you reach Hermes?** dropdown (that route's commands, URL shape, headers and a *Test this route* button — plus a link to its walkthrough), and the guide itself lists the routes as links instead of printing every recipe at once.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.28** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.29** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -446,6 +446,14 @@ What this buys you:
 - `/v1/models` advertises the **profile name** (`obsidian`), which is how you confirm the routing took effect — it appears in the plugin's model dropdown.
 
 Save the whole connection with *Connections → Save this connection as…* so you can switch between "Local" and "Vault profile" in one click.
+
+**A URL-selected profile only accepts a key of at least 16 characters.** Hermes resolves a named profile's key with `has_usable_secret(key, min_length=16)` and treats anything shorter as unusable, so it computes an expected key of empty and answers **401 whatever the plugin sends** — even when the `.env` and the plugin hold the same string. The default scope's own guard is far more lenient, which is why this only appears once a prefix is set. Generate one properly:
+
+```bash
+openssl rand -hex 24        # 48 characters — into that profile's .env, restart, re-paste
+```
+
+The plugin warns about this under the API key field whenever a profile prefix is set.
 
 **Two things to watch.** Two profiles that both leave `API_SERVER_PORT` unset will both try to bind **8642** — give each one its own port. And under multiplexing you only manage the *default* profile's gateway; a secondary profile's gateway must stay stopped.
 

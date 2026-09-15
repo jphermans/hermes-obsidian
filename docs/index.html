@@ -167,7 +167,7 @@
 <body>
 <header class="top">
   <div class="top-inner">
-    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.28</span> <small>complete setup guide</small></span>
+    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.29</span> <small>complete setup guide</small></span>
     <span class="top-actions">
       <a class="ghost" style="padding:7px 11px;border:1px solid var(--border);border-radius:8px" href="https://github.com/jphermans/hermes-obsidian">Repository</a>
       <button class="ghost" id="theme">Theme</button>
@@ -915,6 +915,9 @@ API_SERVER_HOST=127.0.0.1           # default, this device only — 0.0.0.0 or a
       </tbody>
     </table>
     <p>What you get: separate sessions and memory, its own <code>SOUL.md</code>, its own key you can rotate alone — and <code>/v1/models</code> starts advertising the <b>profile name</b>, which is how you confirm the routing took effect (it shows up in the plugin's model dropdown). Save the whole connection with <b>Connections → Save this connection as…</b> so "Local" and "Vault profile" are one click apart.</p>
+    <div class="card bad">
+      <p style="margin:0"><b>A URL-selected profile only accepts a key of at least 16 characters.</b> Hermes resolves a named profile's key with <code>has_usable_secret(key, min_length=16)</code> and treats a shorter one as unusable — so it computes an expected key of empty and answers <b>401 whatever the client sends</b>, even when the <code>.env</code> and the plugin hold the same string. The default scope's guard is far more lenient, which is why this only shows up once a prefix is set. Generate one with <code>openssl rand -hex 24</code>, put it in that profile's <code>.env</code>, restart the multiplexer, and paste the same value into the plugin.</p>
+    </div>
     <p class="field">Finer control: each conversation already travels in its own lane — the plugin sends <code>X-Hermes-Session-Id</code> per conversation with a memory scope key of <code>obsidian:&lt;VaultName&gt;:&lt;sessionId&gt;</code>. Turning off <b>Report the conversation to Hermes sessions</b> writes nothing to the Hermes session store at all, at the cost of session history and background-delegation delivery.</p>
 
     <h2 id="phone">9 · Hermes on the phone itself</h2>

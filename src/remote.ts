@@ -242,3 +242,40 @@ export function mergeHeaderLines(
   const merged = added.length === 0 ? base : (base ? base + "\n" : "") + added.join("\n");
   return { text: merged, added, skipped };
 }
+
+/**
+ * The shortest API key a URL-selected profile accepts.
+ *
+ * `gateway/platforms/api_server.py::_expected_api_key` resolves a named profile's key
+ * with `has_usable_secret(key, min_length=16)` and returns `""` when it is shorter — so
+ * a 12-character key makes every request to /p/<profile>/v1 answer 401 no matter what the
+ * client sends. The default scope's own startup guard is far more lenient, which is why
+ * this only bites once a prefix is set.
+ */
+export const MIN_PROFILED_KEY_LENGTH = 16;
+
+/** A specific warning when the key cannot possibly be accepted for this prefix. */
+export function apiKeyAdvice(profile: string, apiKey: string): string | null {
+  const prefix = (profile || "").trim();
+  if (prefix.length === 0 || prefix.toLowerCase() === "default") return null;
+  const key = (apiKey || "").trim();
+  if (key.length === 0) {
+    return (
+      "A named profile needs its own key: paste the API_SERVER_KEY from ~/.hermes/profiles/" +
+      prefix +
+      "/.env — the default profile's key is a different scope."
+    );
+  }
+  if (key.length < MIN_PROFILED_KEY_LENGTH) {
+    return (
+      "This key is " +
+      key.length +
+      " characters, and a URL-selected profile (/p/" +
+      prefix +
+      ") only accepts a key of at least " +
+      MIN_PROFILED_KEY_LENGTH +
+      " characters. Hermes treats a shorter key as unusable and answers HTTP 401 whatever is sent — generate one with `openssl rand -hex 24` and put the same value in that profile's .env."
+    );
+  }
+  return null;
+}

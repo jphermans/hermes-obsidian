@@ -1,7 +1,7 @@
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type HermesAgentNotesPlugin from "./main";
 import { cleartextWarning, describeError, endpointsFor, obsidianOrigins } from "./hermes-client";
-import { REMOTE_PRESETS, mergeHeaderLines, presetFor } from "./remote";
+import { REMOTE_PRESETS, apiKeyAdvice, mergeHeaderLines, presetFor } from "./remote";
 import { loopbackBlockMessage } from "./settings-file";
 import type { AccessMode } from "./types";
 import { copyText } from "./ui/clipboard";
@@ -156,6 +156,17 @@ export class HermesSettingTab extends PluginSettingTab {
     let urlError: HTMLElement | null = null;
     let blockedUrl = "";
 
+    // A prefixed (multiplexed) profile silently rejects a short key with 401, so
+    // say it here instead of letting the connection card go red for no visible reason.
+    let keyAdviceEl: HTMLElement | null = null;
+    const paintKeyAdvice = () => {
+      if (!keyAdviceEl) return;
+      const advice = apiKeyAdvice(this.plugin.settings.profile, this.plugin.settings.apiKey);
+      keyAdviceEl.empty();
+      keyAdviceEl.toggleClass("is-hidden", !advice);
+      if (advice) keyAdviceEl.createEl("p", { text: advice });
+    };
+
     new Setting(containerEl)
       .setName("API server URL")
       .setClass("hermes-wide")
@@ -203,6 +214,7 @@ export class HermesSettingTab extends PluginSettingTab {
             this.plugin.settings.profile = value.trim();
             this.plugin.settings.connection = null;
             void this.plugin.saveSettings();
+            paintKeyAdvice();
           })
       );
 
@@ -224,6 +236,9 @@ export class HermesSettingTab extends PluginSettingTab {
         });
       });
 
+    keyAdviceEl = containerEl.createDiv({ cls: "hermes-callout hermes-callout-warn is-hidden" });
+    paintKeyAdvice();
+
     const keySetting = new Setting(containerEl)
       .setName("API key")
       .setClass("hermes-wide")
@@ -238,6 +253,7 @@ export class HermesSettingTab extends PluginSettingTab {
             this.plugin.settings.apiKey = value.trim();
             this.plugin.settings.connection = null;
             void this.plugin.saveSettings();
+            paintKeyAdvice();
           });
       });
     keySetting.addExtraButton((button) =>
