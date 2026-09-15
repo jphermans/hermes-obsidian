@@ -672,6 +672,31 @@ await test("the setup page shows one tab at a time and reopens where you left it
   }
 });
 
+await test("every setting the documentation promises has a row in the settings page", async () => {
+  const plugin = await makePlugin();
+  const tab = new hermes.HermesSettingTab(app, plugin);
+  const pages = [];
+  for (const id of ["connection", "remote", "notes", "chat", "backup", "guide"]) {
+    plugin.settings.settingsTab = id;
+    tab.display();
+    pages.push(textOf(tab.containerEl));
+  }
+  const all = pages.join("\n");
+  // These are named in the README and the published guide, so they have to exist here.
+  for (const label of [
+    "Attachment folder",
+    "Send images to the model",
+    "Default folder for new notes",
+    "File names",
+    "Set-up wizard",
+    "API key",
+    "Profile prefix",
+    "Automatic backup file",
+  ]) {
+    assert.ok(all.indexOf(label) >= 0, "nothing in the settings page says “" + label + "”, but the docs do");
+  }
+});
+
 await test("Obsidian 1.13 opens the tab through renderTab(), which must not be shadowed", async () => {
   const plugin = await makePlugin();
   const tab = new hermes.HermesSettingTab(app, plugin);

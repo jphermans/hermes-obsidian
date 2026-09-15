@@ -335,10 +335,14 @@ export class Setting {
     this.controlEl = makeEl("input");
     this.inputEl = makeEl("input");
   }
-  setName() {
+  /** Recorded on the row, so tests can check what the settings page offers. */
+  setName(name) {
+    this.name = name;
+    this.settingEl.textContent = String(this.settingEl.textContent || "") + String(name === undefined ? "" : name);
     return this;
   }
-  setDesc() {
+  setDesc(desc) {
+    this.desc = desc;
     return this;
   }
   setHeading() {

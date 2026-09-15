@@ -10,6 +10,7 @@ import { ErrorsModal } from "./ui/errors-modal";
 import { QuickPromptModal } from "./ui/quick-prompt-modal";
 import { describeProfile, profileMatches } from "./profiles";
 import { listFolders } from "./vault-rules";
+import { readServerInfo } from "./server-info";
 
 /** The published, long-form setup guide — every route in one page. */
 export const GUIDE_URL = "https://jphermans.github.io/hermes-obsidian/";
@@ -276,6 +277,15 @@ export class HermesSettingTab extends PluginSettingTab {
    * calls ours with no arguments, display() never runs, and the pane comes up blank with
    * no error anywhere. It is not in the public typings, so nothing warns about it.
    */
+  /** One line about the capability the image toggle depends on, when it is known. */
+  private visionNote(): string {
+    const connection = this.plugin.settings.connection;
+    const info = connection ? readServerInfo({ capabilities: connection.features || [], version: connection.version || "" }) : null;
+    if (!connection || !connection.ok) return "Test the connection to see whether this server accepts images.";
+    if (info && info.vision) return "This server advertises vision.";
+    return "This server does not advertise accepting images — they will still be saved to the vault.";
+  }
+
   private renderActiveTab(id: string, el: HTMLElement): void {
     switch (id) {
       case "remote":
@@ -819,6 +829,33 @@ export class HermesSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Attachment folder")
+      .setDesc("Where an image pasted into the chat is written. Empty means Attachments at the vault root; a name that is already taken is never overwritten.")
+      .addText((text) =>
+        text
+          .setPlaceholder("Attachments")
+          .setValue(this.plugin.settings.attachmentFolder)
+          .onChange((value) => {
+            this.plugin.settings.attachmentFolder = value.trim();
+            void this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Send images to the model")
+      .setDesc(
+        "Off: a pasted image is saved into the vault and linked in your message. On: it is also sent as an image part, which needs a vision-capable model. " +
+          this.visionNote()
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.sendImages).onChange((value) => {
+          this.plugin.settings.sendImages = value;
+          void this.plugin.saveSettings();
+          this.display();
+        })
+      );
+
+    new Setting(containerEl)
       .setName("File names")
       .setDesc("How Hermes titles are turned into file names. Obsidian removes / \\ : * ? \" < > | # ^ [ ] in any case.")
       .addDropdown((dropdown) =>
@@ -995,6 +1032,11 @@ export class HermesSettingTab extends PluginSettingTab {
           "."
         : "No analysis cached yet — it runs on the first request.",
     });
+
+    new Setting(containerEl)
+      .setName("Set-up wizard")
+      .setDesc("The three steps a fresh install goes through: route, URL and key, then a test.")
+      .addButton((button) => button.setButtonText("Run the setup wizard").onClick(() => this.plugin.openSetupWizard()));
 
     new Setting(containerEl)
       .setName("Inspect or rescan")
