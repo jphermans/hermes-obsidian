@@ -1983,6 +1983,135 @@ test("the revision prompt carries the draft, the correction and the original req
   assert.ok(hermes.revisionPrompt("", "draft", "fix it").indexOf("The original request") < 0, "no original request, no section for it");
 });
 
+
+// ── a conversation as a note ────────────────────────────────────────────
+test("transcript: a prompt becomes one clean heading", () => {
+  assert.equal(hermes.summarisePrompt("What is **Obsidian**?\n\nMore detail here"), "What is Obsidian?");
+  assert.equal(hermes.summarisePrompt("## Heading\nbody text"), "Heading");
+  assert.equal(hermes.summarisePrompt("- a bullet about the kitchen"), "a bullet about the kitchen");
+  assert.ok(hermes.summarisePrompt("x".repeat(300)).length <= 72, "long prompts are shortened");
+  assert.equal(hermes.summarisePrompt(""), "Conversation");
+});
+
+test("transcript: the note keeps the documented property formats", () => {
+  const note = hermes.transcriptNote(
+    [
+      { role: "user", content: "Plan the kitchen" },
+      { role: "assistant", content: "Sure — here is a plan." },
+    ],
+    { title: "Kitchen chat", created: "2026-09-15", model: "hermes-agent", endpoint: "http://127.0.0.1:8642" }
+  );
+  const frontmatter = note.split("---")[1];
+  assert.ok(/created: 2026-09-15\n/.test(frontmatter), "created is a bare date, not a timestamp: " + frontmatter);
+  assert.ok(!/created: "2026/.test(frontmatter), "a quoted date would be Text, not Date");
+  assert.ok(/model: hermes-agent/.test(frontmatter), "the model is recorded");
+  assert.ok(/source: http:\/\/127\.0\.0\.1:8642/.test(frontmatter), "and where it came from");
+  assert.ok(note.indexOf("# Kitchen chat") >= 0, "the title is the H1");
+  assert.ok(note.indexOf("## Plan the kitchen") >= 0, "each question gets a heading");
+  assert.ok(note.indexOf("Sure — here is a plan.") >= 0, "and the answer keeps its place");
+  assert.ok(note.indexOf("```") < 0, "the note is not wrapped in a code fence");
+});
+
+test("transcript: an answer with no question still gets a heading", () => {
+  const note = hermes.transcriptNote([{ role: "assistant", content: "Just an answer." }], { title: "T", created: "2026-09-15" });
+  assert.ok(note.indexOf("## Answer") >= 0);
+  assert.ok(note.indexOf("Just an answer.") >= 0);
+});
+
+test("transcript: blank turns are dropped, not written as empty sections", () => {
+  const note = hermes.transcriptNote(
+    [
+      { role: "user", content: "one" },
+      { role: "assistant", content: "   " },
+      { role: "user", content: "two" },
+    ],
+    { title: "T", created: "2026-09-15" }
+  );
+  assert.ok(note.indexOf("## one") >= 0 && note.indexOf("## two") >= 0);
+  assert.equal(note.split("## ").length - 1, 2, "exactly two sections, counting the H1 is not one of them");
+});
+
+// ── pasted images ───────────────────────────────────────────────────────
+test("attachments: names sort by date and carry the right extension", () => {
+  assert.equal(hermes.attachmentName("image/png", new Date(2026, 8, 15), 1), "hermes-2026-09-15-1.png");
+  assert.equal(hermes.attachmentName("image/jpeg", new Date(2026, 0, 5), 2), "hermes-2026-01-05-2.jpg");
+  assert.equal(hermes.attachmentName("image/webp", new Date(2026, 11, 31), 10), "hermes-2026-12-31-10.webp");
+  assert.equal(hermes.attachmentName("image/unknown-thing", new Date(2026, 8, 15), 1), "hermes-2026-09-15-1.png");
+  assert.equal(hermes.extensionFor("image/png; charset=binary"), "png");
+});
+
+test("attachments: the folder falls back to Attachments and never produces a double slash", () => {
+  assert.equal(hermes.attachmentFolder(""), "Attachments");
+  assert.equal(hermes.attachmentFolder("   "), "Attachments");
+  assert.equal(hermes.attachmentFolder("/Media/Shots/"), "Media/Shots");
+  assert.equal(hermes.attachmentPath("", "a.png"), "Attachments/a.png");
+  assert.equal(hermes.attachmentPath("Media/Shots", "a.png"), "Media/Shots/a.png");
+});
+
+test("attachments: a name already in the vault is never overwritten", () => {
+  const existing = ["Attachments/hermes-2026-09-15-1.png"];
+  assert.equal(hermes.uniqueAttachmentName(existing, "", "hermes-2026-09-15-1.png"), "hermes-2026-09-15-1-2.png");
+  assert.equal(hermes.uniqueAttachmentName(existing, "", "other.png"), "other.png");
+  const two = existing.concat(["Attachments/hermes-2026-09-15-1-2.png"]);
+  assert.equal(hermes.uniqueAttachmentName(two, "", "hermes-2026-09-15-1.png"), "hermes-2026-09-15-1-3.png");
+});
+
+test("attachments: base64 is done without Buffer, which mobile does not have", () => {
+  const bytes = new TextEncoder().encode("hello").buffer;
+  assert.equal(hermes.base64Encode(bytes), "aGVsbG8=");
+  assert.equal(hermes.base64Encode(new Uint8Array([104]).buffer), "aA==");
+  assert.equal(hermes.base64Encode(new Uint8Array([104, 105]).buffer), "aGk=");
+  assert.equal(hermes.base64Encode(new Uint8Array([]).buffer), "");
+  assert.equal(hermes.base64Encode(new Uint8Array([255, 254, 253]).buffer), "//79");
+});
+
+test("attachments: the image part uses the data URL the endpoint expects", () => {
+  const url = hermes.imageDataUrl({ name: "a.png", type: "image/png", data: new TextEncoder().encode("hi").buffer });
+  assert.equal(url, "data:image/png;base64,aGk=");
+  const odd = hermes.imageDataUrl({ name: "a.png", type: "", data: new TextEncoder().encode("hi").buffer });
+  assert.equal(odd, "data:image/png;base64,aGk=", "a missing type falls back to png");
+});
+
+test("attachments: embeds point at the vault path, which always resolves", () => {
+  assert.equal(hermes.embedLines("", ["a.png"]), "![[Attachments/a.png]]");
+  assert.equal(hermes.embedLines("Media", ["a.png", "b.jpg"]), "![[Media/a.png]]\n![[Media/b.jpg]]");
+});
+
+// ── what the server says about itself ───────────────────────────────────
+test("server info: reads the version and the features it understands", () => {
+  const info = hermes.readServerInfo({ version: "0.9.4", capabilities: { streaming: true, vision: true, canvas: false } });
+  assert.equal(info.version, "0.9.4");
+  assert.ok(info.features.indexOf("streaming") >= 0 && info.features.indexOf("vision") >= 0);
+  assert.ok(info.features.indexOf("canvas") < 0, "features that are off are not listed");
+  assert.equal(info.vision, true);
+});
+
+test("server info: an unexpected payload is not an error", () => {
+  assert.deepEqual(hermes.readServerInfo(null), { version: "", features: [], vision: false });
+  assert.deepEqual(hermes.readServerInfo("nonsense"), { version: "", features: [], vision: false });
+  assert.deepEqual(hermes.readServerInfo(/x/), { version: "", features: [], vision: false });
+  assert.equal(hermes.readServerInfo({ features: ["Vision"] }).vision, true, "a feature list alone is enough");
+});
+
+test("server info: a server that does not report itself says so", () => {
+  const state = { ok: true, at: 0, detail: "ok" };
+  const warnings = hermes.capabilityWarnings(state, { streaming: true, sendImages: true });
+  assert.equal(warnings.length, 1);
+  assert.ok(/capabilities/.test(warnings[0]), "the warning names the endpoint");
+  assert.deepEqual(hermes.capabilityWarnings({ ok: false, at: 0, detail: "no" }, { streaming: true, sendImages: false }), [], "a failed connection has its own message");
+});
+
+test("server info: streaming and images are only questioned when the server is silent about them", () => {
+  const withStreaming = { ok: true, at: 0, detail: "", version: "1.0.0", features: ["streaming"] };
+  assert.deepEqual(hermes.capabilityWarnings(withStreaming, { streaming: true, sendImages: false }), []);
+  const without = { ok: true, at: 0, detail: "", version: "1.0.0", features: ["chat"] };
+  assert.equal(hermes.capabilityWarnings(without, { streaming: true, sendImages: false }).length, 1);
+  assert.deepEqual(hermes.capabilityWarnings(without, { streaming: false, sendImages: false }), [], "nothing is claimed when nothing is on");
+  assert.equal(hermes.capabilityWarnings(without, { streaming: false, sendImages: true }).length, 1, "images are questioned on their own");
+  assert.equal(hermes.describeServer(without), "Hermes 1.0.0 · chat", "the card describes the server in one line");
+  assert.equal(hermes.describeServer(null), "");
+});
+
 console.log("selftest: " + passed + " passed, " + failed + " failed");
 if (failures.length > 0) {
   console.log("\nFailures:");

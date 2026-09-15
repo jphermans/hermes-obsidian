@@ -123,6 +123,8 @@ function makeEl(tag = "div") {
       return child;
     },
     createDiv: (options) => el.createEl("div", options),
+    createSpan: (options) => el.createEl("span", options),
+    createSvg: (tag) => el.createEl(tag || "svg", {}),
     // Real enough to assert on: tests check which classes a render added.
     addClass: (...names) => {
       for (const name of names) {
@@ -191,6 +193,12 @@ export class Component {
     return child;
   }
   registerEvent() {}
+  /** Obsidian returns a disposer; the harness only has to not throw. */
+  register(callback) {
+    return callback;
+  }
+  registerDomEvent() {}
+  registerInterval() {}
 }
 
 export class WorkspaceLeaf extends Component {}
@@ -369,9 +377,39 @@ export class Setting {
   }
 }
 
+/** Countdown of renders that should throw, so the chat guard can be tested for real. */
+export let markdownFailures = 0;
+export let markdownRejections = 0;
+
+/** Makes the next `count` renders throw synchronously. */
+export function failMarkdownRenders(count) {
+  markdownFailures = count;
+}
+
+/** Makes the next `count` renders return a rejected promise, the way a real async one can. */
+export function rejectMarkdownRenders(count) {
+  markdownRejections = count;
+}
+
+export let markdownRenders = 0;
+
 export class MarkdownRenderer {
-  static async render() {}
-  static async renderMarkdown() {}
+  static render(app, markdown, el) {
+    markdownRenders++;
+    if (markdownFailures > 0) {
+      markdownFailures--;
+      throw new Error("the renderer blew up");
+    }
+    if (markdownRejections > 0) {
+      markdownRejections--;
+      return Promise.reject(new Error("the async renderer blew up"));
+    }
+    if (el && typeof el.createEl === "function") el.createEl("span", { text: String(markdown) });
+    return Promise.resolve();
+  }
+  static async renderMarkdown(app, markdown, el) {
+    return MarkdownRenderer.render(app, markdown, el);
+  }
 }
 
 export class FuzzySuggestModal extends Modal {

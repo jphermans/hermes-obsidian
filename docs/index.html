@@ -167,7 +167,7 @@
 <body>
 <header class="top">
   <div class="top-inner">
-    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.38</span> <small>complete setup guide</small></span>
+    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.39</span> <small>complete setup guide</small></span>
     <span class="top-actions">
       <a class="ghost" style="padding:7px 11px;border:1px solid var(--border);border-radius:8px" href="https://github.com/jphermans/hermes-obsidian">Repository</a>
       <button class="ghost" id="theme">Theme</button>
@@ -286,7 +286,7 @@
       <li><b>Enable the API server</b> on the machine that runs Hermes (<a href="#host">section 1</a>).</li>
       <li><b>Make it reachable</b> from the device running Obsidian (<a href="#choose">pick your row</a>).</li>
       <li><b>Install the plugin with BRAT</b>: Community plugins → BRAT → <i>Add a beta plugin</i> → <code>jphermans/hermes-obsidian</code>, then enable <b>Hermes Agent Notes</b>.</li>
-      <li><b>Settings → Hermes Agent Notes</b>: paste the URL, the API key, and anything your route needs (a profile prefix, or extra headers).</li>
+      <li><b>Settings → Hermes Agent Notes</b>: paste the URL, the API key, and anything your route needs (a profile prefix, or extra headers). On a fresh install the plugin opens a <b>three-step wizard</b> with the same fields — route, URL and key, then <i>Test and finish</i> — so you can skip straight to it. <i>Run the setup wizard</i> in the command palette reopens it at any time.</li>
       <li>Press <b>Test connection</b>. Then <b>Open chat panel</b> and ask for a note.</li>
     </ol>
 
@@ -1036,7 +1036,7 @@ sudo loginctl enable-linger "$USER"                #    Linux: services survive 
     </ul>
 
     <h2 id="defaults">Appendix: defaults at a glance</h2>
-    <p class="field">The values the plugin ships with, so you know what you are changing when you change one. Everything on this page that mentions a limit is one of these.</p>
+    <p class="field">The values the plugin ships with, so you know what you are changing when you change one. <b>Test connection</b> asks <code>/health</code>, <code>/v1/models</code> and <code>/v1/capabilities</code>; the card then names the server's version and its features, and says plainly when <code>/v1/capabilities</code> is missing, when streaming is on but the server does not advertise it, or when sending images is on without vision support. Streaming and the image setting are both off or empty by default. Everything on this page that mentions a limit is one of these.</p>
 
     <figure>
       <div class="figure-frame">
@@ -1077,6 +1077,8 @@ sudo loginctl enable-linger "$USER"                #    Linux: services survive 
         <tr><td><b>API server URL</b></td><td>Root of the instance — <b>no</b> <code>/v1</code> suffix. The port is optional: a tunnel on 443 needs none. Without a scheme, a public hostname becomes <code>https</code>, a LAN or loopback address stays <code>http</code>.</td><td><code>http://127.0.0.1:8642</code><br><code>https://hermes.example.com</code></td></tr>
         <tr><td><b>API key</b></td><td>The value you invented and put in that instance's <code>.env</code> as <code>API_SERVER_KEY</code>.</td><td>any strong string</td></tr>
         <tr><td><b>Profile prefix</b></td><td>Only with <code>gateway.multiplex_profiles</code> on the default profile. Requests go to <code>/p/&lt;name&gt;/v1</code>.</td><td><code>obsidian</code> or empty</td></tr>
+        <tr><td><b>Attachment folder</b></td><td>Where an image pasted into the chat is written. Empty means <code>Attachments</code> at the vault root. A file name already in use is never overwritten — the next free suffix is chosen instead.</td><td><code>Attachments</code><br><code>Media/Clips</code></td></tr>
+        <tr><td><b>Send images to the model</b></td><td>Off by default. When on, a pasted image is sent as an image part as well as saved to the vault, which needs a vision-capable model. The connection card warns when the server does not advertise the capability, and an image turn is answered in one piece rather than streamed.</td><td>off / on</td></tr>
         <tr><td><b>Extra request headers</b></td><td>One <code>Name: value</code> per line. Cloudflare Access tokens, an authenticating proxy, ngrok's interstitial skip.</td><td><code>CF-Access-Client-Id: …</code></td></tr>
         <tr><td><b>Model</b></td><td>What the instance advertises. <code>/v1/models</code> returns one name — <code>hermes-agent</code>, or the profile's name.</td><td><code>hermes-agent</code></td></tr>
         <tr><td><b>Provider override</b></td><td>Only needed if you want a specific provider on the Hermes side; otherwise the instance uses its own default.</td><td>empty</td></tr>

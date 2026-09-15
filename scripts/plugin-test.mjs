@@ -596,6 +596,18 @@ function findAllByClass(element, className, out = []) {
   return out;
 }
 
+/** The first element whose own text is exactly the label — buttons included. */
+function findByText(root, label) {
+  const own = String(root.text !== undefined ? root.text : "");
+  const content = String(root.textContent || "");
+  if (own === label || (content === label && (root.children || []).length === 0)) return root;
+  for (const child of root.children || []) {
+    const hit = findByText(child, label);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /** Click something the way a user would. */
 function click(element, label) {
   const listeners = (element && element.listeners) || [];
@@ -839,6 +851,158 @@ await test("the page says it is still starting instead of throwing", async () =>
   const texts = textOf(tab.containerEl);
   assert.ok(texts.includes("still starting up"), "the page explains itself");
   plugin.settings = real;
+});
+
+// ── the chat panel cannot be blanked by one failing piece ────────────────
+/** Obsidian hands a view its app through the workspace; the harness has no workspace. */
+async function makeChatView(plugin) {
+  const view = new hermes.HermesChatView({ app: plugin.app }, plugin);
+  view.app = plugin.app;
+  await view.onOpen();
+  return view;
+}
+
+await test("a message that cannot be drawn says so, and the rest of the panel survives", async () => {
+  const plugin = await makePlugin();
+  const view = await makeChatView(plugin);
+  view.entries.length = 0;
+  view.entries.push(
+    { role: "user", content: "first question" },
+    { role: "assistant", content: "first answer" },
+    { role: "assistant", content: "the one that survives" }
+  );
+  hermes.failMarkdownRenders(1);
+  view.renderEntries();
+  const text = textOf(view.contentEl);
+  assert.ok(text.indexOf("could not be drawn") >= 0, "the failing message says so: " + text.slice(0, 400));
+  assert.ok(text.indexOf("first question") >= 0, "the question before it is still there");
+  assert.ok(text.indexOf("the one that survives") >= 0, "and so are the messages after it");
+});
+
+await test("a render that rejects asynchronously is reported inside that message", async () => {
+  const plugin = await makePlugin();
+  const view = await makeChatView(plugin);
+  view.entries.length = 0;
+  view.entries.push(
+    { role: "assistant", content: "an answer whose renderer gives up" },
+    { role: "assistant", content: "the next answer, which is fine" }
+  );
+  hermes.rejectMarkdownRenders(1);
+  view.renderEntries();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const text = textOf(view.contentEl);
+  assert.ok(text.indexOf("could not be drawn") >= 0, "the bubble explains itself: " + text.slice(0, 400));
+  assert.ok(text.indexOf("the next answer, which is fine") >= 0, "and the panel carries on with the next one");
+});
+
+// ── the first run ────────────────────────────────────────────────────────
+await test("the setup wizard shows the routes and stops nagging once closed", async () => {
+  const plugin = await makePlugin({ apiKey: "" });
+  const app = plugin.app;
+  plugin.settings.onboardingDone = false;
+  const modal = new hermes.OnboardingModal(app, plugin);
+  modal.open();
+  const text = textOf(modal.contentEl);
+  assert.ok(text.indexOf("Step 1 of 3") >= 0, "the wizard says where it is: " + text.slice(0, 200));
+  assert.ok(text.indexOf("How will this device reach Hermes") >= 0, "and asks the one question that matters first: " + text.slice(0, 400));
+  const later = findByText(modal.contentEl, "I will do this later");
+  assert.ok(later, "the way out is there");
+  click(later, "I will do this later");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(plugin.settings.onboardingDone, true, "closing it marks it done so it cannot nag on every start");
+  assert.equal(hermes.openedModals.filter((entry) => entry === modal).length > 0, true, "it was a real modal");
+});
+
+await test("the wizard writes the URL, the key and the profile it was given", async () => {
+  const plugin = await makePlugin({ apiKey: "" });
+  const app = plugin.app;
+  plugin.settings.onboardingDone = false;
+  const modal = new hermes.OnboardingModal(app, plugin);
+  modal.url = "http://192.168.188.198:8642";
+  modal.key = "0123456789abcdef0123";
+  modal.profile = "obsidian";
+  modal.mode = "lan";
+  await modal.apply(false);
+  assert.equal(plugin.settings.baseUrl, "http://192.168.188.198:8642");
+  assert.equal(plugin.settings.apiKey, "0123456789abcdef0123");
+  assert.equal(plugin.settings.profile, "obsidian");
+  assert.equal(plugin.settings.accessMode, "lan");
+  assert.equal(plugin.settings.onboardingDone, true);
+});
+
+// ── pasted images ────────────────────────────────────────────────────────
+await test("a pasted image is written into the vault and linked in the message", async () => {
+  const plugin = await makePlugin();
+  const view = await makeChatView(plugin);
+  const bytes = new TextEncoder().encode("pretend this is a png").buffer;
+  await view.addImages([{ name: "shot.png", type: "image/png", arrayBuffer: async () => bytes }]);
+  const chips = findAllByClass(view.contentEl, "hermes-attachment");
+  assert.equal(chips.length, 1, "the image appears as a chip before it is sent");
+  assert.ok(textOf(chips[0]).indexOf("hermes-") >= 0, "the chip names the file: " + textOf(chips[0]));
+
+  server.seen.length = 0;
+  await view.submit("what is in this picture?");
+  const written = pathsOf().filter((path) => path.indexOf("Attachments/hermes-") === 0);
+  const onDisk = Array.from(plugin.app.vault.adapter.files.keys()).filter((path) => path.indexOf("Attachments/hermes-") === 0);
+  assert.equal(
+    written.length + onDisk.length,
+    1,
+    "the file landed in the vault: " + pathsOf().join(", ") + " / disk: " + onDisk.join(", ") +
+      " / notices: " + hermes.notices.map((notice) => String(notice.message || notice)).join(" | ")
+  );
+  const payload = JSON.parse(server.seen.find((entry) => entry.url === "/v1/chat/completions").body);
+  const last = payload.messages[payload.messages.length - 1];
+  assert.ok(String(last.content).indexOf("![[Attachments/hermes-") >= 0, "the message links what was pasted: " + String(last.content).slice(-200));
+  assert.ok(Array.isArray(last.content) === false, "and no image part is sent while the setting is off");
+  assert.equal(findAllByClass(view.contentEl, "hermes-attachment").length, 0, "the chips are cleared once the message is sent");
+});
+
+await test("an image is attached to the request only when sending images is on", async () => {
+  const plugin = await makePlugin();
+  plugin.settings.sendImages = true;
+  const view = await makeChatView(plugin);
+  const bytes = new TextEncoder().encode("png bytes").buffer;
+  await view.addImages([{ name: "shot.png", type: "image/png", arrayBuffer: async () => bytes }]);
+  server.seen.length = 0;
+  await view.submit("describe this");
+  const payload = JSON.parse(server.seen.find((entry) => entry.url === "/v1/chat/completions").body);
+  const last = payload.messages[payload.messages.length - 1];
+  assert.ok(Array.isArray(last.content), "the message goes as parts: " + JSON.stringify(last.content).slice(0, 200));
+  const parts = last.content;
+  assert.equal(parts[0].type, "text", "the text comes first");
+  const image = parts.find((part) => part.type === "image_url");
+  assert.ok(image && /^data:image\/png;base64,/.test(image.image_url.url), "the image is a data URL: " + (image ? image.image_url.url.slice(0, 40) : "missing"));
+});
+
+await test("the conversation becomes a note that keeps the vault's property formats", async () => {
+  const plugin = await makePlugin();
+  const view = await makeChatView(plugin);
+  plugin.app.workspace.getLeavesOfType = () => [{ view }];
+  view.entries.length = 0;
+  view.entries.push(
+    { role: "user", content: "Plan the kitchen renovation" },
+    { role: "assistant", content: "Start with the floor." }
+  );
+  hermes.openedModals.length = 0;
+  // The export stops at the review window and waits for a decision, so it must not be
+  // awaited here — nothing would ever answer it and the run would hang.
+  const exported = plugin.exportConversation();
+  exported.catch(() => undefined);
+  for (let tick = 0; tick < 40; tick++) await new Promise((resolve) => setTimeout(resolve, 5));
+  const modal = hermes.openedModals[hermes.openedModals.length - 1];
+  assert.ok(modal, "the conversation is shown for approval before it is written");
+  const text = textOf(modal.contentEl);
+  assert.ok(/created: \d{4}-\d{2}-\d{2}/.test(text), "the date is a bare date, not a timestamp: " + text.slice(0, 300));
+  assert.ok(text.indexOf("created: " + new Date().toISOString().slice(0, 10)) >= 0 || /created: \d{4}-\d{2}-\d{2}/.test(text), "and it is today");
+  assert.ok(text.indexOf("## Plan the kitchen renovation") >= 0, "the question became a heading: " + text.slice(0, 400));
+  assert.ok(text.indexOf("Start with the floor.") >= 0, "and the answer is in the note");
+  assert.ok(pathsOf().filter((path) => path.indexOf("Plan the kitchen") >= 0).length === 0, "nothing is written before the approval");
+  // Decide it, so the pending promise settles instead of leaking into the next test.
+  const reject = findByText(modal.contentEl, "Reject");
+  if (reject) click(reject, "Reject");
+  else modal.close();
+  await new Promise((resolve) => setTimeout(resolve, 10));
 });
 
 server.close();

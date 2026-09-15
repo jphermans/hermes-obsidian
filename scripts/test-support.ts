@@ -1,3 +1,15 @@
+// Obsidian always runs in a browser-like context: the plugin uses `window.open` for the
+// setup guide and `window.setTimeout` for the first-run wizard, so the harness provides it.
+if (typeof (globalThis as any).window !== "object" || (globalThis as any).window === null) {
+  (globalThis as any).window = globalThis;
+}
+if (typeof (globalThis as any).window.open !== "function") {
+  (globalThis as any).window.open = (url?: string) => {
+    (globalThis as any).lastOpenedUrl = url || "";
+    return null;
+  };
+}
+
 // The preview modal focuses its first field when it opens; Node has no animation frames.
 if (typeof (globalThis as any).requestAnimationFrame !== "function") {
   (globalThis as any).requestAnimationFrame = (fn: () => void) => {
@@ -70,6 +82,20 @@ export function makeApp(files: FakeFile[]) {
         this.files.delete(path);
       },
       async mkdir() {},
+      /** Images go through the adapter in Obsidian, so they do here too. */
+      async writeBinary(path: string, data: ArrayBuffer) {
+        this.files.set(path, data);
+        const normalised = path.replace(/^[/]+/, "");
+        if (!find(normalised)) {
+          const entry = new TFile(normalised, folderFor(normalised));
+          (entry as unknown as { stat: { mtime: number } }).stat = { mtime: Date.now() };
+          store.push(entry);
+        }
+      },
+      async readBinary(path: string) {
+        if (!this.files.has(path)) throw new Error("ENOENT: " + path);
+        return this.files.get(path);
+      },
     },
     read: async (file: TFile) => (file as unknown as { content: string }).content,
     cachedRead: async (file: TFile) => (file as unknown as { content: string }).content,

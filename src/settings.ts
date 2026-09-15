@@ -12,7 +12,7 @@ import { describeProfile, profileMatches } from "./profiles";
 import { listFolders } from "./vault-rules";
 
 /** The published, long-form setup guide — every route in one page. */
-const GUIDE_URL = "https://jphermans.github.io/hermes-obsidian/";
+export const GUIDE_URL = "https://jphermans.github.io/hermes-obsidian/";
 
 /** One-click prompts for the setup page's prompt box. */
 const PROMPT_SAMPLES: { label: string; prompt: string }[] = [

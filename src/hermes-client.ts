@@ -14,9 +14,17 @@
 import { Platform, requestUrl } from "obsidian";
 import type { HermesAgentNotesSettings } from "./types";
 
+/** One part of a message: text, or an image as a data URL. */
+export interface ChatContentPart {
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: { url: string };
+}
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  /** Plain text, or parts when the turn carries an image. */
+  content: string | ChatContentPart[];
 }
 
 export interface ChatUsage {

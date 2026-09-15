@@ -16,6 +16,8 @@ import { filterCommands, isCommandInput, runCommand, SLASH_COMMANDS } from "../s
 import type { SlashAction } from "../slash";
 import { looksLikeFileOpRequest } from "../file-ops";
 import { SuggestDropdown } from "./suggest-dropdown";
+import { attachmentFolder, attachmentName, embedLines, uniqueAttachmentName, type PendingImage } from "../attachments";
+import { ensureFolder } from "../note-writer";
 import { HistoryModal } from "./history-modal";
 import { copyText } from "./clipboard";
 import { filterQuickPrompts, fillQuickPrompt, quickPromptQuery } from "../quick-prompts";
@@ -61,6 +63,11 @@ export class HermesChatView extends ItemView {
   private sendBtn!: HTMLButtonElement;
   private stopBtn!: HTMLButtonElement;
   private statusEl!: HTMLElement;
+  private attachEl!: HTMLElement;
+  /** Images pasted or dropped into the composer, waiting for this message. */
+  private attachments: PendingImage[] = [];
+  /** The images that belong to the turn currently in flight. */
+  private turnImages: PendingImage[] = [];
   private contextEl!: HTMLElement;
   private pendingEl: HTMLElement | null = null;
   private pendingTextEl: HTMLElement | null = null;
@@ -118,6 +125,9 @@ export class HermesChatView extends ItemView {
     const newButton = headerActions.createEl("button", { text: "New", cls: "hermes-icon-btn" });
     newButton.setAttr("title", "Start a new conversation");
     newButton.addEventListener("click", () => this.newChat());
+    const saveButton = headerActions.createEl("button", { text: "📄", cls: "hermes-icon-btn" });
+    saveButton.setAttr("title", "Save this conversation as a note");
+    saveButton.addEventListener("click", () => void this.plugin.exportConversation());
     const settingsButton = headerActions.createEl("button", { text: "⚙", cls: "hermes-icon-btn" });
     settingsButton.setAttr("title", "Hermes connection settings");
     settingsButton.addEventListener("click", () => this.plugin.openSettings());
@@ -132,9 +142,9 @@ export class HermesChatView extends ItemView {
     const composer = root.createDiv({ cls: "hermes-chat-composer" });
     this.suggest = new SuggestDropdown(composer);
     this.chipsEl = composer.createDiv({ cls: "hermes-chips" });
-    this.renderChips();
+    this.guard(this.contentEl, "Chips", () => this.renderChips());
     this.contextEl = composer.createDiv({ cls: "hermes-chat-context" });
-    this.renderContext();
+    this.guard(this.contentEl, "Context", () => this.renderContext());
 
     this.inputEl = composer.createEl("textarea", { cls: "hermes-chat-input" });
     this.inputEl.rows = Platform.isMobile ? 2 : 3;
@@ -187,6 +197,29 @@ export class HermesChatView extends ItemView {
       }
     });
 
+    // Pasted or dropped images: shown as chips, saved into the vault with the message.
+    this.attachEl = composer.createDiv({ cls: "hermes-attachments is-hidden" });
+    this.inputEl.addEventListener("paste", (event: ClipboardEvent) => {
+      const items = event.clipboardData ? Array.from(event.clipboardData.items || []) : [];
+      const files = items.filter((item) => item.kind === "file" && item.type.indexOf("image/") === 0).map((item) => item.getAsFile());
+      const images = files.filter((file): file is File => !!file);
+      if (images.length > 0) {
+        event.preventDefault();
+        void this.addImages(images);
+      }
+    });
+    composer.addEventListener("dragover", (event: DragEvent) => {
+      if (event.dataTransfer && Array.from(event.dataTransfer.types || []).indexOf("Files") >= 0) event.preventDefault();
+    });
+    composer.addEventListener("drop", (event: DragEvent) => {
+      const dropped = event.dataTransfer ? Array.from(event.dataTransfer.files || []) : [];
+      const images = dropped.filter((file) => file.type.indexOf("image/") === 0);
+      if (images.length > 0) {
+        event.preventDefault();
+        void this.addImages(images);
+      }
+    });
+
     const actions = composer.createDiv({ cls: "hermes-chat-actions" });
     this.sendBtn = actions.createEl("button", { text: "Send", cls: "mod-cta hermes-send" });
     this.sendBtn.addEventListener("click", () => void this.send());
@@ -204,7 +237,7 @@ export class HermesChatView extends ItemView {
     modelSelect.addEventListener("change", () => {
       this.plugin.settings.model = modelSelect.value;
       void this.plugin.saveSettings();
-      this.renderStatus();
+      this.guard(this.contentEl, "Status", () => this.renderStatus());
     });
     const providerInput = modelRow.createEl("input", { cls: "hermes-provider-input", type: "text" });
     providerInput.placeholder = "provider override";
@@ -230,7 +263,7 @@ export class HermesChatView extends ItemView {
 
     this.renderEntries();
     this.renderStatus();
-    this.renderQueue();
+    this.guard(this.contentEl, "Queue", () => this.renderQueue());
   }
 
   /** What is running and what is waiting, message queue and plugin queue together. */
@@ -294,6 +327,25 @@ export class HermesChatView extends ItemView {
 
   // --- messages ------------------------------------------------------------
 
+  /**
+   * Runs one part of the panel. A throw used to take the whole view down — the same class of
+   * bug that blanked the settings page — so every part now names itself instead.
+   */
+  private guard(parent: HTMLElement, label: string, render: () => void): void {
+    try {
+      render();
+    } catch (error) {
+      const message = describeError(error);
+      void this.plugin.logError("Chat — " + label, message);
+      const box = parent.createDiv({ cls: "hermes-callout hermes-callout-warn" });
+      box.createEl("p", { text: "This part of the chat could not be shown (" + label + "): " + message });
+      box.createEl("p", {
+        cls: "setting-item-description",
+        text: "The message is in the error log too — Settings → Hermes Agent Notes → Backup & errors, Show recent errors.",
+      });
+    }
+  }
+
   private renderEntries(): void {
     if (!this.listEl) return;
     this.pendingEl = null;
@@ -334,16 +386,30 @@ export class HermesChatView extends ItemView {
     let prompt = "";
     for (const entry of this.entries) {
       if (entry.role === "user") prompt = entry.content;
-      this.renderEntry(entry, prompt);
+      // One broken message must not cost the reader the rest of the conversation.
+      this.guard(this.listEl, "message", () => this.renderEntry(entry, prompt));
     }
-    this.scrollToBottom();
+    this.guard(this.listEl, "scroll position", () => this.scrollToBottom());
   }
 
   private renderEntry(entry: ChatEntry, prompt = ""): void {
     const wrapper = this.listEl.createDiv({ cls: "hermes-msg hermes-msg-" + entry.role });
     const bubble = wrapper.createDiv({ cls: "hermes-bubble" });
     if (entry.role === "assistant") {
-      void MarkdownRenderer.render(this.app, entry.content, bubble, "", this);
+      // A render that fails — sync or as a rejected promise — says so inside the message
+      // instead of leaving an empty bubble and a broken panel.
+      try {
+        const rendered = MarkdownRenderer.render(this.app, entry.content, bubble, "", this) as unknown as Promise<void> | undefined;
+        if (rendered && typeof rendered.catch === "function") {
+          rendered.catch((error: unknown) => {
+            void this.plugin.logError("Chat — markdown", describeError(error));
+            bubble.createEl("p", { cls: "hermes-callout hermes-callout-warn", text: "This message could not be drawn: " + describeError(error) });
+          });
+        }
+      } catch (error) {
+        void this.plugin.logError("Chat — markdown", describeError(error));
+        bubble.createEl("p", { cls: "hermes-callout hermes-callout-warn", text: "This message could not be drawn: " + describeError(error) });
+      }
       if (entry.transport) {
         const label = transportLabel(entry.transport);
         if (label) wrapper.createDiv({ cls: "hermes-transport", text: label });
@@ -425,13 +491,28 @@ export class HermesChatView extends ItemView {
     // A command expands into a message; @[[…]] becomes a plain wikilink.
     const outgoing = command && command.kind === "message" ? command.text : stripMentionSyntax(typed);
     this.suggest?.hide();
+    // Pasted images: written into the vault, linked in the message, and — if the setting is
+    // on — sent along as image parts.
+    let outgoingWithImages = outgoing;
+    if (this.attachments.length > 0) {
+      const written = await this.saveAttachments();
+      if (written.length > 0) {
+        const folder = attachmentFolder(this.plugin.settings.attachmentFolder);
+        outgoingWithImages = outgoing + "\n\n" + embedLines(folder, written);
+        this.turnImages = this.plugin.settings.sendImages ? this.attachments.slice() : [];
+      }
+      this.attachments = [];
+      this.renderAttachments();
+    } else {
+      this.turnImages = [];
+    }
     this.entries.push({ role: "user", content: typed });
     // "move the boiler note into Archive" is a file operation, not a question.
     if (this.plugin.settings.allowFileOps && looksLikeFileOpRequest(outgoing)) {
       await this.runFileOps(typed);
       return;
     }
-    await this.runTurn(outgoing, typed);
+    await this.runTurn(outgoingWithImages, typed);
   }
 
   /** Plans copy / move / delete, asks for approval, and reports what happened. */
@@ -471,6 +552,8 @@ export class HermesChatView extends ItemView {
       this.setPendingLabel("Waiting for " + (this.plugin.queue.activeLabel() || "another job"));
     }
     try {
+      const images = this.turnImages;
+      this.turnImages = [];
       const history = trimHistory(this.entries, this.plugin.settings.maxHistoryMessages);
       // The bubble is not always what goes out: a command has been expanded and
       // mention syntax has been stripped, so the last user turn is replaced.
@@ -483,6 +566,7 @@ export class HermesChatView extends ItemView {
       // One job at a time: a note command launched meanwhile goes first.
       const answer = await this.plugin.queued("Chat answer", () =>
         this.plugin.runChat(history, {
+        images,
           // runChat enforces this too; passing it here keeps the two in step.
           includeNote: this.includeNote && !newNote,
           mentionTitles,
@@ -730,6 +814,72 @@ export class HermesChatView extends ItemView {
       this.controller.abort();
       this.controller = null;
     }
+  }
+
+  /** Reads pasted or dropped images into memory and shows them as chips. */
+  private async addImages(files: File[]): Promise<void> {
+    const folder = attachmentFolder(this.plugin.settings.attachmentFolder);
+    const existing = this.app.vault.getFiles().map((file) => file.path);
+    for (const file of files) {
+      try {
+        const data = await file.arrayBuffer();
+        const wanted = attachmentName(file.type, new Date(), this.attachments.length + 1);
+        const name = uniqueAttachmentName(existing.concat(this.attachments.map((image) => folder + "/" + image.name)), folder, wanted);
+        this.attachments.push({ name, data, type: file.type });
+      } catch (error) {
+        new Notice("Could not read that image: " + describeError(error));
+      }
+    }
+    this.renderAttachments();
+  }
+
+  private renderAttachments(): void {
+    if (!this.attachEl) return;
+    this.attachEl.empty();
+    this.attachEl.toggleClass("is-hidden", this.attachments.length === 0);
+    if (this.attachments.length === 0) return;
+    for (let index = 0; index < this.attachments.length; index++) {
+      const image = this.attachments[index];
+      const chip = this.attachEl.createDiv({ cls: "hermes-attachment" });
+      chip.createEl("span", { text: image.name });
+      const remove = chip.createEl("button", { text: "✕", cls: "hermes-attachment-remove" });
+      remove.setAttr("aria-label", "Remove " + image.name);
+      remove.addEventListener("click", () => {
+        this.attachments.splice(index, 1);
+        this.renderAttachments();
+      });
+    }
+    this.attachEl.createEl("p", {
+      cls: "setting-item-description",
+      text: this.plugin.settings.sendImages
+        ? "Saved into " + attachmentFolder(this.plugin.settings.attachmentFolder) + " and sent to the model, which needs a vision-capable one."
+        : "Saved into " + attachmentFolder(this.plugin.settings.attachmentFolder) + " and linked in your message. Turn on sending images in the settings to ask about the picture itself.",
+    });
+  }
+
+  /** Writes the pending images into the vault, once, when the message is sent. */
+  private async saveAttachments(): Promise<string[]> {
+    if (this.attachments.length === 0) return [];
+    const folder = attachmentFolder(this.plugin.settings.attachmentFolder);
+    await ensureFolder(this.app, folder);
+    const written: string[] = [];
+    for (const image of this.attachments) {
+      const path = folder + "/" + image.name;
+      try {
+        await this.app.vault.adapter.writeBinary(path, image.data);
+        written.push(image.name);
+      } catch (error) {
+        new Notice("Could not save " + image.name + ": " + describeError(error));
+      }
+    }
+    return written;
+  }
+
+  /** The conversation as plain turns, for saving it as a note. */
+  transcript(): { role: "user" | "assistant"; content: string }[] {
+    return this.entries
+      .filter((entry) => entry.content.trim().length > 0)
+      .map((entry) => ({ role: entry.role, content: entry.content }));
   }
 
   newChat(): void {

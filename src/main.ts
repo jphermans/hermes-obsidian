@@ -13,6 +13,8 @@ import { HermesSettingTab } from "./settings";
 import { HermesChatView, VIEW_TYPE_HERMES_CHAT } from "./ui/chat-view";
 import { PromptModal } from "./ui/prompt-modal";
 import { PreviewModal } from "./ui/preview-modal";
+import { OnboardingModal } from "./ui/onboarding-modal";
+import { summarisePrompt, transcriptNote } from "./transcript";
 import { AnswerModal, AnswerActions } from "./ui/answer-modal";
 import { looksLikeNewNoteRequest } from "./intent";
 import { SerialQueue } from "./queue";
@@ -61,6 +63,11 @@ import {
   writeNote,
 } from "./note-writer";
 import { vaultTypeMap } from "./properties";
+import { GUIDE_URL } from "./settings";
+import { capabilityWarnings, describeServer, readServerInfo } from "./server-info";
+import { embedLines, imageDataUrl, uniqueAttachmentName, type PendingImage } from "./attachments";
+import { askAndPresent, reviewAndSave } from "./note-flows";
+import type { AskKind, NoteFlowHost, PresentOutcome } from "./note-flows";
 import {
   exportableSettings,
   mergeImportedSettings,
@@ -86,8 +93,16 @@ import {
   fixUserPrompt,
   rewriteUserPrompt,
   systemPrompt,
-  revisionPrompt,
 } from "./prompts";
+
+/** Text plus image parts, or plain text when nothing is attached. */
+function withImages(text: string, images?: PendingImage[]): ChatMessage["content"] {
+  if (!images || images.length === 0) return text;
+  const parts: { type: "text" | "image_url"; text?: string; image_url?: { url: string } }[] = [];
+  if (text.trim().length > 0) parts.push({ type: "text", text });
+  for (const image of images) parts.push({ type: "image_url", image_url: { url: imageDataUrl(image) } });
+  return parts;
+}
 
 const MAX_CONTEXT_CHARS = 12000;
 /** Mentioned notes are explicit, but the request still has to stay affordable. */
@@ -106,12 +121,6 @@ const EXAMPLES = [
   "Summarise this note and tighten the prose",
   "Turn this into a project note with tasks",
 ];
-
-/** What a note request can be for — the same set askOnce accepts. */
-export type AskKind = "create" | "rewrite" | "fix" | "answer" | "title" | "fileops";
-
-/** What came back from the review window: written, dropped, or "do it again like this". */
-export type PresentOutcome = "saved" | "cancelled" | { revise: string };
 
 export default class HermesAgentNotesPlugin extends Plugin {
   settings!: HermesAgentNotesSettings;
@@ -145,6 +154,13 @@ export default class HermesAgentNotesPlugin extends Plugin {
         this.refreshViews();
       })
     );
+
+    // A first run — nothing saved yet — should not start with a wall of settings.
+    if (!this.settings.onboardingDone && this.settings.apiKey.trim().length === 0) {
+      window.setTimeout(() => {
+        if (!this.settings.onboardingDone) this.openSetupWizard();
+      }, 800);
+    }
   }
 
   onunload(): void {
@@ -217,6 +233,18 @@ export default class HermesAgentNotesPlugin extends Plugin {
       id: "test-connection",
       name: "Test the Hermes connection",
       callback: () => void this.testConnectionWithNotice(),
+    });
+
+    this.addCommand({
+      id: "setup-wizard",
+      name: "Run the setup wizard",
+      callback: () => this.openSetupWizard(),
+    });
+
+    this.addCommand({
+      id: "chat-to-note",
+      name: "Save this conversation as a note",
+      callback: () => void this.queued("Conversation to note", () => this.exportConversation()),
     });
 
     this.addCommand({
@@ -349,6 +377,16 @@ export default class HermesAgentNotesPlugin extends Plugin {
     return (this.settings.model || "hermes-agent").trim() || "hermes-agent";
   }
 
+  /** The published setup guide, in a browser tab. */
+  openSetupGuide(): void {
+    window.open(GUIDE_URL, "_blank");
+  }
+
+  /** First run only: three steps instead of a wall of settings. */
+  openSetupWizard(): void {
+    new OnboardingModal(this.app, this).open();
+  }
+
   openSettings(): void {
     const internal = this.app as unknown as {
       setting?: { open(): void; openTabById(id: string): void };
@@ -366,6 +404,8 @@ export default class HermesAgentNotesPlugin extends Plugin {
     let models: string[] = [];
     let ok = false;
     let model = this.modelLabel();
+    let serverVersion = "";
+    let serverFeatures: string[] = [];
     try {
       const health = await client.health();
       if (!health.ok) throw new HermesError("Hermes answered HTTP " + health.status + ".", "server", health.status);
@@ -375,6 +415,16 @@ export default class HermesAgentNotesPlugin extends Plugin {
       } catch (error) {
         models = [];
         detail = detail + " · could not list models (" + describeError(error) + ")";
+      }
+      try {
+        const info = readServerInfo(await client.capabilities());
+        serverVersion = info.version;
+        serverFeatures = info.features;
+        if (info.version) detail = detail + " · Hermes " + info.version;
+        if (info.features.length > 0) detail = detail + " · features: " + info.features.slice(0, 6).join(", ");
+      } catch (error) {
+        // Optional endpoint: say so once, and keep going.
+        detail = detail + " · no /v1/capabilities (" + describeError(error) + ")";
       }
       if (models.length > 0) {
         detail = detail + " · model" + (models.length === 1 ? "" : "s") + ": " + models.join(", ");
@@ -389,7 +439,15 @@ export default class HermesAgentNotesPlugin extends Plugin {
       detail = describeError(error);
       ok = false;
     }
-    const state: ConnectionState = { ok, at: Date.now(), detail, model, models };
+    const state: ConnectionState = {
+      ok,
+      at: Date.now(),
+      detail,
+      model,
+      models,
+      version: serverVersion || undefined,
+      features: serverFeatures.length > 0 ? serverFeatures : undefined,
+    };
     this.settings.connection = state;
     if (models.length > 0) this.settings.availableModels = models;
     await this.saveSettings();
@@ -704,13 +762,15 @@ export default class HermesAgentNotesPlugin extends Plugin {
       onController?: (controller: AbortController) => void;
       /** Told which transport answered, so the UI can say so. */
       onTransport?: (info: TransportInfo) => void;
+      /** Images pasted into the composer, already saved to the vault. */
+      images?: PendingImage[];
     } = {}
   ): Promise<string> {
     const conversation: ChatMessage[] = history.map((entry) => ({ role: entry.role, content: entry.content }));
     // "Create a new note about X" must not be answered out of the note that is
     // open, otherwise the new note comes out as a continuation of the old one.
     const lastUser = [...conversation].reverse().find((entry) => entry.role === "user");
-    const wantsNewNote = lastUser ? looksLikeNewNoteRequest(lastUser.content) : false;
+    const wantsNewNote = lastUser ? looksLikeNewNoteRequest(String(lastUser.content)) : false;
     const mentioned = await this.resolveMentionedNotes(options.mentionTitles || []);
     const context = await this.noteContext({
       includeActive: options.includeNote !== false && !wantsNewNote,
@@ -718,7 +778,8 @@ export default class HermesAgentNotesPlugin extends Plugin {
     });
     for (let index = conversation.length - 1; index >= 0; index--) {
       if (conversation[index].role === "user") {
-        conversation[index] = { role: "user", content: chatUserPrompt(conversation[index].content, context) };
+        const text = chatUserPrompt(String(conversation[index].content), context);
+        conversation[index] = { role: "user", content: withImages(text, options.images) };
         break;
       }
     }
@@ -726,7 +787,11 @@ export default class HermesAgentNotesPlugin extends Plugin {
     const client = this.client();
 
     let fellBack = false;
-    if (this.settings.streaming && options.onDelta) {
+    // An image turn is sent in one piece: the streaming path would have to interleave parts
+    // for no benefit, and a dropped stream would lose the image.
+    const carriesImages = withImages("", options.images) !== "";
+    if (carriesImages) new Notice("An image is attached, so this answer arrives in one piece.", 5000);
+    if (this.settings.streaming && options.onDelta && !carriesImages) {
       const controller = new AbortController();
       if (options.onController) options.onController(controller);
       try {
@@ -1151,25 +1216,30 @@ export default class HermesAgentNotesPlugin extends Plugin {
    * Shows the generated note, then writes it. On rewrite the existing
    * frontmatter is preserved and merged so no property is silently lost.
    */
-  /**
-   * Asks for a note, shows the draft, and if the reviewer asked for a change, sends the
-   * draft back with that correction rather than making them retype the request. The
-   * reference plugin offers the same escape hatch on a permission prompt ("Other…").
-   */
+  /** The plugin side of the note flows: everything they need, nothing they don't. */
+  private flowHost(): NoteFlowHost {
+    return {
+      app: this.app,
+      settings: {
+        openAfterCreate: this.settings.openAfterCreate,
+        trackEdits: this.settings.trackEdits,
+        filenameStyle: this.settings.filenameStyle,
+      },
+      ask: (kind, context, userPrompt) => this.askOnce(kind, context, userPrompt),
+      conventions: () => this.getConventions(),
+      logError: (source, error, detail) => this.logError(source, error, detail),
+      openAtChange: (file, before, after) => this.openNoteAtChange(file, before, after),
+    };
+  }
+
+  /** Asks, shows the draft, and takes a correction back to Hermes instead of a bare reject. */
   private async askAndPresent(
     label: AskKind,
     context: NoteContext,
     userPrompt: string,
     present: (note: string) => Promise<PresentOutcome>
-  ): Promise<void> {
-    let prompt = userPrompt;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const raw = await this.askOnce(label, context, prompt);
-      const outcome = await present(extractNote(raw));
-      if (typeof outcome !== "object") return;
-      prompt = revisionPrompt(userPrompt, extractNote(raw), outcome.revise);
-    }
-    new Notice("Five revisions in a row — nothing was written. Ask again when you know what should change.", 10000);
+  ): Promise<PresentOutcome> {
+    return askAndPresent(this.flowHost(), label, context, userPrompt, present);
   }
 
   private async presentNote(
@@ -1181,86 +1251,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
     existingContent: string | null,
     heading: string
   ): Promise<PresentOutcome> {
-    if (!note.trim()) {
-      new Notice("Hermes returned an empty note.");
-      return "saved";
-    }
-    let content = note;
-    if (existingContent !== null) {
-      const incoming = splitFrontmatter(note);
-      const existing = splitFrontmatter(existingContent);
-      if (incoming.present || existing.present) {
-        const merged = mergeFrontmatter(existing.data, incoming.data, { keepExisting: true, mergeLists: true });
-        // The vault's own type for a property name is what Obsidian's panel shows, so the
-        // writer honours it: a numeric string for a name the vault counts in numbers becomes
-        // a number, a name the vault lists becomes a list.
-        content = serializeNote(merged, incoming.body, vaultTypeMap(await this.getConventions()));
-      }
-    }
-
-    const title = titleFromNote(content, baseName);
-    const fileName = sanitizeFilename(applyFilenameStyle(sanitizeFilename(title), this.settings.filenameStyle));
-    const suggestedPath = existingPath && mode === "overwrite" ? existingPath : uniquePath(this.app, folder, fileName);
-
-    const result = await PreviewModal.ask(this.app, {
-      heading,
-      notePath: suggestedPath,
-      content,
-      folders: listFolders(this.app),
-      mode,
-      conventions: await this.getConventions(),
-      openAfter: mode === "create" ? this.settings.openAfterCreate : false,
-      before: existingContent !== null ? existingContent : undefined,
-      note:
-        mode === "create"
-          ? "Check the note, its file name and the Obsidian checks, then create it. Nothing is written until you press Create note."
-          : "The changes are listed line by line. The file is replaced only when you press Approve & save; existing properties are kept.",
-    });
-    if (!result) {
-      if (existingContent !== null) new Notice("Rejected — the note was left untouched.");
-      return "cancelled";
-    }
-    if (result.action === "revise") {
-      // Hand the draft and the correction back to Hermes instead of ending the flow.
-      return { revise: result.feedback || "" };
-    }
-
-    try {
-      const renamed = existingPath !== null && result.path !== existingPath;
-      // The note may have been edited elsewhere while the review window was open.
-      if (mode === "overwrite" && !renamed && existingContent !== null) {
-        const target = this.app.vault.getAbstractFileByPath(result.path);
-        const current = target instanceof TFile ? await this.app.vault.read(target) : null;
-        if (current !== null && contentChanged(current, existingContent)) {
-          new Notice(
-            "Nothing was written: the note changed while you were reviewing it. Run the command again to see the current version.",
-            12000
-          );
-          await this.logError("Stale approval", "the note changed between review and save", result.path);
-          return "cancelled";
-        }
-      }
-      const written = await writeNote(
-        this.app,
-        result.path,
-        result.content,
-        mode === "overwrite" && !renamed ? "overwrite" : "create"
-      );
-      if (renamed) new Notice("Saved as a new note: " + written.path);
-      else new Notice((mode === "create" ? "Note created: " : "Note updated: ") + written.path);
-      if (mode === "overwrite" && existingContent !== null && this.settings.trackEdits) {
-        // Follow the edit: open the note where it actually changed.
-        await this.openNoteAtChange(written, existingContent, result.content);
-      } else if (result.openAfter) {
-        const leaf = this.app.workspace.getLeaf(false);
-        await leaf.openFile(written);
-      }
-      return "saved";
-    } catch (error) {
-      new Notice("Could not write the note: " + (error instanceof Error ? error.message : String(error)));
-      await this.logError("Write note", error, result.path);
-      return "cancelled";
-    }
+    return reviewAndSave(this.flowHost(), { mode, note, baseName, folder, existingPath, existingContent, heading });
   }
 
   // --- answers and editing -------------------------------------------------
@@ -1396,6 +1387,51 @@ export default class HermesAgentNotesPlugin extends Plugin {
       await this.logError("Title request", error);
       return "";
     }
+  }
+
+  /**
+   * The chat panel's conversation as a note. It goes through the same review step as every
+   * other write, so the properties and headings are checked before anything lands.
+   */
+  async exportConversation(): Promise<void> {
+    const view = this.chatView();
+    if (!view) {
+      new Notice("Open the Hermes chat panel first.");
+      return;
+    }
+    const turns = view.transcript();
+    if (turns.length === 0) {
+      new Notice("Nothing to save yet — ask something first.");
+      return;
+    }
+    const firstPrompt = turns.filter((turn) => turn.role === "user")[0];
+    const fallback = firstPrompt ? firstPrompt.content : "Conversation with Hermes";
+    const knownTypes = vaultTypeMap(await this.getConventions());
+    const draft = transcriptNote(turns, {
+      title: summarisePrompt(fallback),
+      endpoint: this.endpointLabel(),
+      model: this.modelLabel(),
+      knownTypes,
+    });
+    // The title comes from the note itself, by the same rules as any other note.
+    const title = titleFromNote(draft, fallback);
+    const note = transcriptNote(turns, {
+      title,
+      endpoint: this.endpointLabel(),
+      model: this.modelLabel(),
+      knownTypes,
+    });
+    // Reviewed like every other write: nothing lands in the vault unseen.
+    await this.presentNote("create", note, title, this.settings.defaultFolder, null, null, "Conversation with Hermes");
+  }
+
+  /** The chat view, when it is open. */
+  private chatView(): HermesChatView | null {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_HERMES_CHAT);
+    for (const leaf of leaves) {
+      if (leaf.view instanceof HermesChatView) return leaf.view;
+    }
+    return null;
   }
 
   async saveTextAsNote(text: string, hint: string): Promise<void> {

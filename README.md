@@ -77,6 +77,8 @@ The setup page is **tabbed** — *Connection · Remote access · Notes · Chat &
 
 Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.38** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
+On a fresh install the plugin opens a **three-step wizard** the first time it loads: pick how this device reaches Hermes, type the URL and the key, press **Test and finish**. Closing it either way marks it done, so it never nags — *Run the setup wizard* in the command palette brings it back. The steps below are the manual version of the same thing.
+
 ### 1. Enable the API server on the Hermes host
 
 Put these in `~/.hermes/.env` — the enable flag and the key are **environment variables**, not `config.yaml` keys:
@@ -476,12 +478,14 @@ The plugin warns about this under the API key field whenever a profile prefix is
 | **Ask Hermes about the active note** | Vault-aware answers with *Insert at cursor* / *Append* / *Save as note*. |
 | **Turn the selection into a note** | Uses the selected text as source material. |
 | **Insert a Hermes answer at the cursor** | Inline help without leaving the editor. |
-| **Test the Hermes connection** | Health check plus model discovery, with a plain-language diagnosis. |
+| **Test the Hermes connection** | Health check, model discovery and `/v1/capabilities`. The card then shows the server's version and features, and warns when the endpoint is missing, when streaming is on but the server does not advertise it, or when sending images is on without vision support. |
 | **Show detected vault conventions** | See exactly what the plugin learned — and rescan it. |
 | **Rescan vault conventions** | Force a fresh analysis. |
 | **Open the chat panel** | Sidebar conversation with quick-prompt chips, saved connections, model switching and searchable history. |
 | **Chat history** | Every finished turn is stored in `history.json`; the 🕘 button searches it and restores a conversation into the panel. |
 | **Switch connection** | Save the current endpoint as a named profile (Local, Server) and switch between them in one click under *Connections*. |
+| **Save this conversation as a note** | Turns the whole chat panel conversation into a note — properties, one heading per question — and shows it for approval before it is written. The 📄 button in the panel header does the same. |
+| **Run the setup wizard** | Reopens the first-run wizard: route, URL, key, test. |
 
 **Asking for a new note never touches the note you have open.** If the request is *"create a new note about…"*, *"make a note titled…"*, *"write a note…"*, *"create a file…"*, then the open note is deliberately **left out of the request** (the vault conventions still go in), and the answer offers a single primary action — **Create note** — with no Insert or Append. So the new note is written as its own file and never appended to the note you happen to be looking at. Questions ("What links should this note have?", "Fix the Obsidian formatting of this note") keep the normal Insert / Append / Save as note / Copy row.
 
@@ -512,9 +516,21 @@ Nothing in the command list can write to your vault on its own — a command pro
 
 **Improve the active note**, **Rewrite the active note with an instruction** and **Fix the active note for Obsidian** load the note into a review window instead of writing anything. The window opens on a **Changes** tab: the note as it is on disk against the version Hermes proposes, line by line, with additions and removals marked, and a summary (*"12 lines added, 4 lines removed"*) at the top. A **Preview** tab renders the result, and **Markdown** lets you correct it by hand before saving.
 
+Inside a changed line only the words that actually changed are highlighted, so *"14 m2"* becoming *"16 m2"* is visible instead of one line swapped for another.
+
 Then it is a straight yes or no: **Approve & save** writes the note (⌘/Ctrl+Enter does the same), **Reject** leaves the file exactly as it was — you get a *"Rejected — the note was left untouched"* confirmation rather than silence. Existing properties are still merged, so nothing in your frontmatter is dropped.
 
+**Not quite — say what to change…** is the third way out: instead of rejecting and starting over, type what is wrong (*"shorter, and keep my tags"*) and Hermes redoes the note with your correction **and** the draft **and** the original request in hand. The revision comes back into the same window; five corrections are allowed before the plugin stops and hands it back to you. Nothing is written until you approve.
+
 If the note is edited elsewhere while the review window is open, approval refuses to write and says so, instead of overwriting changes you have not seen. Notes that are too large to compare line by line say so and show the result instead of a fake diff.
+
+### Images and attachments
+
+Paste an image into the message box (⌘V / Ctrl+V) or drop one onto the composer — on mobile, paste it from the clipboard. Each image shows as a chip you can remove before sending.
+
+When the message is sent, the image is **written into your vault** as `hermes-2026-09-15-1.png` in the **Attachment folder** (default `Attachments`; a name already taken is never overwritten), and your message carries `![[Attachments/hermes-2026-09-15-1.png]]` — so anything Hermes writes about the picture links to the real file.
+
+**Send images to the model** (off by default) also sends the picture itself, which needs a vision-capable one. The setting says so, the connection card warns when the server does not advertise the capability, and an image turn is answered in one piece rather than streamed — the plugin tells you when that happens.
 
 ### One job at a time
 
@@ -624,6 +640,7 @@ Hermes Agent Notes is `isDesktopOnly: false` and was written for mobile from the
 * No Node.js imports anywhere (the usual reason plugins crash on mobile).
 * No auto-focus on mobile, so the keyboard never covers a dialog; 16px inputs so iOS does not zoom the viewport; 44px touch targets; responsive layout; clipboard fallback for older WebViews.
 * The chat panel is a normal sidebar view, so it works on phones and tablets. Its working indicator is a pure CSS animation and is switched off automatically for *reduce motion*.
+* Pasted images go into the vault through the same adapter Obsidian uses on mobile — no Node APIs — so attachments work on iOS and Android too.
 
 The vault-convention scan reads from Obsidian's cache and takes ~20 ms on a 585-note vault.
 
@@ -631,7 +648,7 @@ The vault-convention scan reads from Obsidian's cache and takes ~20 ms on a 585-
 
 * Settings — including the API key and any extra headers — live in `<vault>/.obsidian/plugins/hermes-agent-notes/data.json`. Keep the vault private and prefer a key you can rotate.
 * Only two things leave the vault: the conventions summary and the notes you explicitly send as context (trimmed to ~12 000 characters). The scan itself never leaves your machine.
-* The plugin never touches a note you did not ask it to change, and every write goes through the preview.
+* The plugin never touches a note you did not ask it to change, and every write goes through the preview. A pasted image is written into your vault and linked in the message; the pixels themselves leave the device only when **Send images to the model** is on.
 * Requests go only to the Hermes URL you configure. Session reporting is opt-in and exists so long runs appear in Hermes session history.
 
 ## Settings file and backup

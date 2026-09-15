@@ -52,6 +52,9 @@ export interface ConnectionState {
   detail: string;
   model?: string;
   models?: string[];
+  /** Reported by /v1/capabilities, when the server implements it. */
+  version?: string;
+  features?: string[];
 }
 
 export interface HermesAgentNotesSettings {
@@ -90,6 +93,13 @@ export interface HermesAgentNotesSettings {
   allowFileOps: boolean;
   /** Deletions go to the trash unless this is on. */
   permanentDelete: boolean;
+  /** Where pasted images go. Empty = the vault's own attachment folder. */
+  attachmentFolder: string;
+  /**
+   * Send a pasted image to the model as well as saving it into the vault. Needs a
+   * vision-capable model; off means the image is only a file the note can embed.
+   */
+  sendImages: boolean;
   /** Prompts you fire from the chips above the chat input. */
   quickPrompts: QuickPrompt[];
   /** Saved connections, switchable in one click. */
@@ -113,6 +123,8 @@ export interface HermesAgentNotesSettings {
   availableModels: string[];
 
   // --- Persistence --------------------------------------------------------
+  /** Set once the first-run wizard has been finished or dismissed. */
+  onboardingDone: boolean;
   /** Mirror the settings to a backup file next to the plugin on every change. */
   autoBackup: boolean;
   /**
@@ -144,6 +156,8 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   stripCaveats: true,
   allowFileOps: true,
   permanentDelete: false,
+  attachmentFolder: "",
+  sendImages: false,
   quickPrompts: defaultQuickPrompts(),
   profiles: [],
   trackEdits: true,
@@ -160,6 +174,7 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   connection: null,
   availableModels: [],
 
+  onboardingDone: false,
   autoBackup: true,
   exportSecrets: false,
 };
