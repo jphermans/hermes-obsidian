@@ -123,9 +123,29 @@ function makeEl(tag = "div") {
       return child;
     },
     createDiv: (options) => el.createEl("div", options),
-    addClass() {},
-    removeClass() {},
-    toggleClass() {},
+    // Real enough to assert on: tests check which classes a render added.
+    addClass: (...names) => {
+      for (const name of names) {
+        if (!name) continue;
+        const present = (el.className || "").split(/\s+/).filter(Boolean);
+        if (present.indexOf(name) < 0) {
+          present.push(name);
+          el.className = present.join(" ");
+        }
+      }
+    },
+    removeClass: (...names) => {
+      const present = (el.className || "").split(/\s+/).filter(Boolean).filter((name) => names.indexOf(name) < 0);
+      el.className = present.join(" ");
+    },
+    toggleClass: (name, force) => {
+      const present = (el.className || "").split(/\s+/).filter(Boolean);
+      const has = present.indexOf(name) >= 0;
+      const want = force === undefined ? !has : !!force;
+      if (want && !has) present.push(name);
+      const next = want ? present : present.filter((entry) => entry !== name);
+      el.className = next.join(" ");
+    },
     setText(text) {
       el.textContent = text;
     },
@@ -278,6 +298,13 @@ function chainable(inputEl, extra = {}) {
 export class Setting {
   constructor(containerEl) {
     this.containerEl = containerEl || makeEl();
+    // A definition's render() callback draws into this row, so it has to exist and be
+    // reachable from the container the way the real .setting-item is.
+    this.settingEl = makeEl("div");
+    if (Array.isArray(this.containerEl.children)) this.containerEl.children.push(this.settingEl);
+    this.infoEl = makeEl("div");
+    this.nameEl = makeEl("div");
+    this.descEl = makeEl("div");
     this.controlEl = makeEl("input");
     this.inputEl = makeEl("input");
   }
@@ -357,8 +384,20 @@ export class PluginSettingTab {
    * Obsidian 1.13 made this the entry point when a settings tab opens: it renders the
    * declarative definitions, or falls back to display(). Deliberately present in the stub
    * so a subclass that shadows it fails the tests the way it fails in the real app.
+   *
+   * The dispatch below mirrors 1.13: a non-empty getSettingDefinitions() means display() is
+   * never called, and each definition's render callback gets a Setting row to draw into.
    */
   renderTab() {
+    const definitions = typeof this.getSettingDefinitions === "function" ? this.getSettingDefinitions() : [];
+    if (Array.isArray(definitions) && definitions.length > 0) {
+      for (const definition of definitions) {
+        const row = new Setting(this.containerEl);
+        row.settingEl.addClass("setting-item");
+        if (typeof definition.render === "function") definition.render(row, { listEl: this.containerEl });
+      }
+      return;
+    }
     this.display();
   }
   display() {}

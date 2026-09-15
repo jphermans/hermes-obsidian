@@ -879,8 +879,24 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   min-height: 24px;
 }
 
-/* Setup page tabs: one section at a time instead of one long page. */
-.hermes-tabs {
+/* Obsidian 1.13 renders the tab through a self-rendered definition, so the pane lives
+   inside a .setting-item row: strip that row's layout so the page is a plain block. */
+.hermes-pane-host {
+  display: block !important;
+  align-items: stretch !important;
+  padding: 0 !important;
+}
+
+/* Search-index rows: findable in settings search, never drawn — the real row is in the tab
+   their description names. */
+.hermes-search-only {
+  display: none !important;
+}
+
+/* Setup page tabs: one section at a time instead of one long page.
+   Own class names on purpose — the preview modal's tabs use .hermes-tab, and sharing it
+   meant these rules restyled that modal (it lost its filled background and active state). */
+.hermes-setup-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -889,7 +905,7 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   border-bottom: 1px solid var(--hermes-border);
 }
 
-.hermes-tab {
+.hermes-setup-tab {
   font: inherit;
   font-size: var(--font-ui-small);
   min-height: 34px;
@@ -902,30 +918,30 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   box-shadow: none;
 }
 
-.hermes-tab:hover {
+.hermes-setup-tab:hover {
   color: var(--text-normal);
   background: var(--hermes-surface-quiet);
 }
 
-.hermes-tab.is-active {
+.hermes-setup-tab.is-active {
   color: var(--hermes-accent);
   font-weight: 700;
   background: var(--hermes-accent-soft);
   border-color: var(--hermes-accent);
 }
 
-.hermes-tab-body > h2:first-child {
+.hermes-setup-tab-body > h2:first-child {
   margin-top: 0;
   border-top: 0;
   padding-top: 0;
 }
 
 @media screen and (max-width: 480px) {
-  .hermes-tabs {
+  .hermes-setup-tabs {
     gap: 6px;
   }
 
-  .hermes-tab {
+  .hermes-setup-tab {
     min-height: 44px;
     flex: 1 1 auto;
   }

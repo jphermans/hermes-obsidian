@@ -75,7 +75,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 
 The setup page is **tabbed** — *Connection · Remote access · Notes · Chat & prompts · Backup & errors · Setup guide* — and remembers the tab you were last on, so no view is a wall of settings. The installed build is a label at the top of every tab.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.34** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.35** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -689,7 +689,9 @@ gh release create v0.1.1 --title "v0.1.1 — <summary>" --notes "<release notes>
   main.js manifest.json styles.css
 ```
 
-Pushing a tag also triggers `.github/workflows/release.yml`, which rebuilds and attaches the assets automatically. `main.js` is committed on purpose — Obsidian loads it directly.
+Pushing a tag triggers `.github/workflows/release.yml`, which rebuilds and attaches the three assets automatically — that is the release, and it is all BRAT needs. `main.js` is a **build output**, not a source file: it is not committed (a stale copy in the repo is worse than none — it silently lags the released bundle), and the assets a user installs always come from the release, built from the tagged source. `styles.css` *is* source and stays in the repo.
+
+Every push to `main` (and every pull request) also runs `.github/workflows/ci.yml`: the test suite, `tsc -noEmit` via `npm run build`, presence of the three files, agreement between `manifest.json`/`package.json`/`versions.json`, and that the docs page is well formed and carries the current version badge.
 
 ## Author
 

@@ -1,0 +1,70 @@
+name: CI
+
+# Runs on every push and pull request, so a broken commit or a version mismatch is caught
+# when it lands instead of when a release is cut. The release workflow (release.yml) still
+# does the publishing; this one only proves the tree is sound.
+#
+# The build step is the real gate: `npm run build` runs `tsc -noEmit` first, so a type
+# error — or a class member that collides with the Obsidian API — fails here.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests (logic, mock API, plugin harness)
+        run: npm test
+
+      - name: Type check and build
+        run: npm run build
+
+      - name: The three files a release needs must exist
+        run: |
+          test -f main.js
+          test -f manifest.json
+          test -f styles.css
+
+      - name: Versions must agree
+        run: |
+          node -e "
+          const manifest = require('./manifest.json');
+          const pkg = require('./package.json');
+          const versions = require('./versions.json');
+          if (manifest.version !== pkg.version) {
+            throw new Error('manifest.json ' + manifest.version + ' does not match package.json ' + pkg.version);
+          }
+          if (!versions[manifest.version]) {
+            throw new Error('versions.json has no entry for ' + manifest.version);
+          }
+          console.log('version ' + manifest.version + ' consistent across manifest.json, package.json and versions.json');
+          "
+
+      - name: The docs page must be well formed and the release tag must match the manifest
+        run: |
+          node -e "
+          const fs = require('fs');
+          const html = fs.readFileSync('docs/index.html', 'utf8');
+          const opens = (html.match(/<section|<div|<details/gi) || []).length;
+          const closes = (html.match(/<\/section>|<\/div>|<\/details>/gi) || []).length;
+          if (opens !== closes) throw new Error('docs/index.html has unbalanced blocks: ' + opens + ' open, ' + closes + ' closed');
+          const manifest = require('./manifest.json');
+          if (html.indexOf('v' + manifest.version) < 0) {
+            throw new Error('the docs page header badge does not mention v' + manifest.version);
+          }
+          console.log('docs page checks out and carries the v' + manifest.version + ' badge');
+          "

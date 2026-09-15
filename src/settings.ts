@@ -1,4 +1,5 @@
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
+import type { SettingDefinitionItem } from "obsidian";
 import type HermesAgentNotesPlugin from "./main";
 import { cleartextWarning, describeError, endpointsFor, obsidianOrigins } from "./hermes-client";
 import { REMOTE_PRESETS, apiKeyAdvice, apiKeyEnvTarget, mergeHeaderLines, presetFor, randomApiKey } from "./remote";
@@ -58,7 +59,156 @@ export class HermesSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("hermes-settings");
+    this.renderPane(containerEl);
+  }
 
+  /**
+   * Obsidian 1.13 renders a settings tab from `getSettingDefinitions()` and then **never
+   * calls `display()`** if that returns anything, and its settings search can only find what
+   * those definitions describe. So the whole pane is one self-rendered definition (identical
+   * on every version, via this shared builder) plus a hidden, searchable index of the options
+   * — typing "hermes token" in settings search lands here instead of nowhere.
+   */
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const shell: SettingDefinitionItem = {
+      name: "Hermes Agent Notes",
+      desc: "Connection, remote access, note writing, prompts, backups and the setup guide — one tab each.",
+      searchable: false,
+      render: (setting: Setting) => {
+        setting.settingEl.empty();
+        setting.settingEl.addClass("hermes-settings");
+        setting.settingEl.addClass("hermes-pane-host");
+        this.renderPane(setting.settingEl);
+      },
+    };
+    const index = this.searchIndex().map((entry) => {
+      const label = HermesSettingTab.labelFor(entry.tab);
+      return {
+        name: entry.name,
+        desc: entry.desc + " (in the " + label + " tab of this plugin's settings)",
+        aliases: entry.aliases,
+        render: (setting: Setting) => {
+          // Indexed for search, never shown: the real row lives in the tab named above.
+          setting.settingEl.addClass("hermes-search-only");
+        },
+      } as SettingDefinitionItem;
+    });
+    const items: SettingDefinitionItem[] = [shell];
+    for (const entry of index) items.push(entry);
+    return items;
+  }
+
+  private static labelFor(id: string): string {
+    const hit = HermesSettingTab.TABS.filter((tab) => tab.id === id)[0];
+    return hit ? hit.label : "Settings";
+  }
+
+  /**
+   * What settings search should be able to find. Names and descriptions mirror the real
+   * rows, and the aliases carry the words a user types instead of the label — "token",
+   * "endpoint", "vpn", "tunnel".
+   */
+  private searchIndex(): { name: string; desc: string; aliases: string[]; tab: string }[] {
+    const profile = this.plugin.settings && this.plugin.settings.profile ? this.plugin.settings.profile : "";
+    return [
+      {
+        name: "Hermes Agent Notes settings",
+        desc: "This plugin's settings: connection, remote access, note writing, prompts, backup and the setup guide.",
+        aliases: ["hermes", "hermes agent", "agent notes", "vault agent", "plugin settings"],
+        tab: "connection",
+      },
+      {
+        name: "API server URL",
+        desc: "Where the plugin reaches Hermes — the same machine, your LAN, Tailscale, WireGuard, a Cloudflare Tunnel, ngrok or a TLS proxy.",
+        aliases: ["base url", "endpoint", "host", "port", "8642", "address", "url"],
+        tab: "connection",
+      },
+      {
+        name: "API key",
+        desc: "The key the plugin sends to Hermes. It must be the API_SERVER_KEY of the profile you are talking to, and at least 16 characters behind a /p/<profile> prefix." + (profile ? " Current prefix: " + profile + "." : ""),
+        aliases: ["token", "secret", "auth", "authentication", "api_server_key", "password", "credential"],
+        tab: "connection",
+      },
+      {
+        name: "Profile prefix",
+        desc: "Route to one Hermes profile when the gateway multiplexes several (gateway.multiplex_profiles).",
+        aliases: ["profile", "multiplex", "obsidian profile", "multi-profile", "/p/"],
+        tab: "connection",
+      },
+      {
+        name: "Model and provider",
+        desc: "Which model the plugin asks for, and the optional provider override.",
+        aliases: ["model", "gpt", "claude", "llm", "provider", "temperature"],
+        tab: "connection",
+      },
+      {
+        name: "Test connection",
+        desc: "Checks the whole chain — URL, key, profile — and reports what came back.",
+        aliases: ["ping", "health", "reachable", "diagnose connection"],
+        tab: "connection",
+      },
+      {
+        name: "Remote access route",
+        desc: "How this device reaches Hermes when it is not on the same machine: LAN, Tailscale, WireGuard, Cloudflare Tunnel, ngrok or your own TLS proxy.",
+        aliases: ["tailscale", "wireguard", "vpn", "cloudflare", "tunnel", "ngrok", "proxy", "remote", "lan", "https"],
+        tab: "remote",
+      },
+      {
+        name: "Note writing and frontmatter",
+        desc: "Opening notes after they are written, properties, and how much of your vault's style the agent copies.",
+        aliases: ["properties", "frontmatter", "yaml", "tags", "aliases", "callouts", "conventions"],
+        tab: "notes",
+      },
+      {
+        name: "Streaming answers",
+        desc: "Show tokens as they arrive instead of waiting for the whole answer.",
+        aliases: ["stream", "tokens", "typing", "live"],
+        tab: "notes",
+      },
+      {
+        name: "Quick prompts",
+        desc: "Save your own prompts and fire them from the chat panel's chips.",
+        aliases: ["prompts", "snippets", "templates", "macros", "shortcuts"],
+        tab: "chat",
+      },
+      {
+        name: "Saved setup",
+        desc: "Keep one connection so switching between the local and the remote Hermes is one click.",
+        aliases: ["saved connection", "profile switch", "switch setup"],
+        tab: "chat",
+      },
+      {
+        name: "Follow edits",
+        desc: "Open a note at the first line the agent changed.",
+        aliases: ["diff", "track edits", "jump to change"],
+        tab: "chat",
+      },
+      {
+        name: "Settings file, backup and the API key in exports",
+        desc: "The automatic backup beside the plugin, the exported settings file — and whether it carries your API key.",
+        aliases: ["export", "import", "restore", "backup", "settings json", "secrets"],
+        tab: "backup",
+      },
+      {
+        name: "Recorded problems (error log)",
+        desc: "Every failure the plugin hit, newest first, with a copy button for bug reports.",
+        aliases: ["log", "errors", "debug", "diagnostics", "troubleshooting"],
+        tab: "backup",
+      },
+      {
+        name: "Setup guide",
+        desc: "Step-by-step setup for every route, the API server, profiles and the keys.",
+        aliases: ["docs", "documentation", "help", "install", "instructions", "readme"],
+        tab: "guide",
+      },
+    ];
+  }
+
+  /**
+   * The page itself: version row, tab row, selected tab. Obsidian 1.13 reaches it through the
+   * self-rendered definition above; every older version through `display()`.
+   */
+  private renderPane(containerEl: HTMLElement): void {
     // Obsidian opens this pane the moment the tab is clicked. A throw anywhere used to
     // leave the whole page blank with no clue why, so every part is guarded now: whatever
     // fails names itself on the page and lands in the error log.
@@ -76,11 +226,11 @@ export class HermesSettingTab extends PluginSettingTab {
     const active = known.some((tab) => tab.id === wanted) ? wanted : "connection";
 
     this.guard(containerEl, "tab row", () => {
-      const strip = containerEl.createDiv({ cls: "hermes-tabs" });
+      const strip = containerEl.createDiv({ cls: "hermes-setup-tabs" });
       for (const tab of known) {
         const button = strip.createEl("button", {
           text: tab.label,
-          cls: tab.id === active ? "hermes-tab is-active" : "hermes-tab",
+          cls: tab.id === active ? "hermes-setup-tab is-active" : "hermes-setup-tab",
         });
         button.setAttr("aria-selected", tab.id === active ? "true" : "false");
         button.addEventListener("click", () => {
@@ -91,7 +241,7 @@ export class HermesSettingTab extends PluginSettingTab {
       }
     });
 
-    const body = containerEl.createDiv({ cls: "hermes-tab-body" });
+    const body = containerEl.createDiv({ cls: "hermes-setup-tab-body" });
     this.renderActiveTab(active, body);
   }
 

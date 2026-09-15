@@ -589,7 +589,8 @@ function textOf(element) {
 }
 
 function findByClass(element, className) {
-  if (element.className === className) return element;
+  const classes = String(element.className || "").split(/\s+/).filter(Boolean);
+  if (classes.indexOf(className) >= 0) return element;
   for (const child of element.children || []) {
     const hit = findByClass(child, className);
     if (hit) return hit;
@@ -609,7 +610,7 @@ await test("the setup page shows one tab at a time and reopens where you left it
   assert.ok(!connection.includes("Enable the API server on the Hermes host"), "the guide is not rendered too");
   assert.ok(!connection.includes("How do you reach Hermes?"), "nor is the remote-access tab");
 
-  const strip = findByClass(tab.containerEl, "hermes-tabs");
+  const strip = findByClass(tab.containerEl, "hermes-setup-tabs");
   assert.ok(strip, "there is a tab strip");
   assert.deepEqual(
     strip.children.map((child) => child.textContent),
@@ -633,7 +634,7 @@ await test("the setup page shows one tab at a time and reopens where you left it
   for (const id of ["connection", "remote", "notes", "chat", "backup", "guide"]) {
     plugin.settings.settingsTab = id;
     tab.display();
-    const body = findByClass(tab.containerEl, "hermes-tab-body");
+    const body = findByClass(tab.containerEl, "hermes-setup-tab-body");
     assert.ok(body && body.children.length > 0, "the " + id + " tab rendered nothing");
   }
 });
@@ -649,6 +650,67 @@ await test("Obsidian 1.13 opens the tab through renderTab(), which must not be s
   const text = textOf(tab.containerEl);
   assert.ok(text.includes("Hermes connection"), "the pane renders when Obsidian opens it this way");
   assert.ok(text.includes("Setup guide"), "including the tab row");
+});
+
+await test("Obsidian 1.13 renders the pane from getSettingDefinitions(), not display()", async () => {
+  const plugin = await makePlugin();
+  const tab = new hermes.HermesSettingTab(app, plugin);
+  const definitions = tab.getSettingDefinitions();
+  assert.ok(Array.isArray(definitions) && definitions.length > 1, "there are definitions");
+
+  // The first one renders the whole tabbed page; it must not be searchable (it is not a
+  // setting) and it must be the one that draws the UI.
+  const shell = definitions[0];
+  assert.equal(shell.searchable, false, "the shell is not a search result");
+  assert.equal(typeof shell.render, "function", "and it renders the pane itself");
+
+  // Obsidian 1.13's dispatch: definitions render, display() is never called.
+  tab.renderTab();
+  const text = textOf(tab.containerEl);
+  assert.ok(text.includes("Hermes connection"), "the pane renders through the declarative path");
+  assert.ok(text.includes("Setup guide"), "with the tab row, the same as display() would");
+
+  const host = findByClass(tab.containerEl, "hermes-pane-host");
+  assert.ok(host, "the pane host is marked so its setting-item layout can be stripped");
+  const classes = String(host.className).split(/\s+/);
+  assert.ok(classes.indexOf("hermes-settings") >= 0, "and carries the settings scope for the CSS variables");
+});
+
+await test("settings search can find the options, and the index rows are never drawn", async () => {
+  const plugin = await makePlugin();
+  plugin.settings.profile = "obsidian";
+  const tab = new hermes.HermesSettingTab(app, plugin);
+  const definitions = tab.getSettingDefinitions();
+  const index = definitions.slice(1);
+
+  assert.ok(index.length >= 10, "the index covers the page: " + index.length + " entries");
+  const names = index.map((entry) => entry.name);
+  for (const wanted of ["API key", "API server URL", "Profile prefix", "Setup guide", "Remote access route"]) {
+    assert.ok(names.indexOf(wanted) >= 0, wanted + " should be searchable");
+  }
+  // Every entry names the tab it lives in, so a search hit leads somewhere.
+  for (const entry of index) {
+    assert.ok(typeof entry.name === "string" && entry.name.length > 0, "an entry has no name");
+    assert.ok(entry.desc.indexOf("tab") >= 0, "the description should name its tab: " + entry.name);
+    assert.ok(Array.isArray(entry.aliases) && entry.aliases.length > 0, "and it should carry search aliases");
+    assert.notEqual(entry.searchable, false, "index entries must be searchable");
+  }
+  // The words a user actually types.
+  const key = index.filter((entry) => entry.name === "API key")[0];
+  assert.ok(key.aliases.indexOf("token") >= 0, "searching for a token finds the API key");
+  assert.ok(key.desc.indexOf("16 characters") >= 0, "and the description carries the rule");
+  assert.ok(key.desc.indexOf("obsidian") >= 0, "including the profile in use");
+
+  // Rendering them must not add anything visible.
+  tab.renderTab();
+  const hidden = [];
+  const walk = (element) => {
+    const classes = String(element.className || "").split(/\s+/).filter(Boolean);
+    if (classes.indexOf("hermes-search-only") >= 0) hidden.push(element);
+    for (const child of element.children || []) walk(child);
+  };
+  walk(tab.containerEl);
+  assert.equal(hidden.length, index.length, "every index row is marked as hidden, and only those");
 });
 
 // --- the page cannot be blanked by one failing section --------------------

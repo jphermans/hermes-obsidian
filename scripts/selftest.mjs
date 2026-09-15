@@ -580,7 +580,8 @@ test("the settings tab shadows no base-class member (the Obsidian 1.13 trap)", (
   // typings, so tsc cannot warn about them. renderTab() is the entry point Obsidian calls
   // when the pane opens: shadowing it silently renders nothing at all.
   const runtimeOnly = ["renderTab", "renderedItems", "settings", "getElementForDefinition", "getDefinitionForElement"];
-  const allowed = new Set(["display", "plugin"]); // display() is the documented override
+  // display() and getSettingDefinitions() are the two documented overrides.
+  const allowed = new Set(["display", "plugin", "getSettingDefinitions"]);
   const own = Object.getOwnPropertyNames(hermes.HermesSettingTab.prototype).filter((name) => name !== "constructor");
   const clashes = [...declared, ...runtimeOnly].filter((name) => own.includes(name) && !allowed.has(name));
   assert.deepEqual(clashes, [], "shadowed base members: " + clashes.join(", "));
@@ -1662,6 +1663,26 @@ test("the note preview reports property problems before anything is written", ()
   assert.ok(text.indexOf("cannot contain spaces") >= 0, "the preview names the bad property");
   assert.ok(text.indexOf("Corrected when saved") >= 0, "and says the save will fix it");
   assert.ok(text.indexOf("Properties present and parseable") >= 0, "the good news stays");
+});
+
+test("the setup tabs and the preview modal's tabs keep separate class names", () => {
+  const settings = readFileSync("src/settings.ts", "utf8");
+  const modal = readFileSync("src/ui/preview-modal.ts", "utf8");
+  const css = readFileSync("styles.css", "utf8");
+
+  // Sharing .hermes-tab meant the tab-strip rules restyled the preview modal's note tabs.
+  assert.ok(settings.indexOf("hermes-tab") < 0, "the setup page must not use the modal's .hermes-tab");
+  assert.ok(settings.indexOf("hermes-setup-tab") >= 0, "the setup page uses its own class");
+  assert.ok(modal.indexOf("hermes-setup-tab") < 0, "and the modal must not use the setup page's");
+  assert.ok(modal.indexOf('cls: "hermes-tab"') >= 0, "the modal keeps .hermes-tab");
+
+  // One definition per selector: a second block silently overrode the first.
+  const count = (selector) => css.split(selector + " {").length - 1;
+  assert.equal(count(".hermes-tab"), 1, "the modal's .hermes-tab is defined once");
+  assert.equal(count(".hermes-tab.is-active"), 1, "including its active state");
+  assert.equal(count(".hermes-setup-tab"), 2, "the setup tab is defined once, plus the mobile rule");
+  assert.equal(count(".hermes-setup-tabs"), 2);
+  assert.equal(count(".hermes-setup-tab.is-active"), 1);
 });
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");
