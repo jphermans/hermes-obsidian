@@ -588,6 +588,27 @@ function textOf(element) {
   return parts.join("\n");
 }
 
+/** Every element carrying the class, deepest first. */
+function findAllByClass(element, className, out = []) {
+  const classes = String(element.className || "").split(/\s+/).filter(Boolean);
+  if (classes.indexOf(className) >= 0) out.push(element);
+  for (const child of element.children || []) findAllByClass(child, className, out);
+  return out;
+}
+
+/** Click something the way a user would. */
+function click(element, label) {
+  const listeners = (element && element.listeners) || [];
+  const hits = listeners.filter((listener) => listener.type === "click");
+  if (hits.length === 0) {
+    throw new Error(
+      "nothing to click for " + (label || "?") + (element ? ": no click listener on “" + element.className + "”" : ": the element was not found")
+    );
+  }
+  for (const hit of hits) hit.handler({ preventDefault() {}, stopPropagation() {} });
+  return hits.length;
+}
+
 function findByClass(element, className) {
   const classes = String(element.className || "").split(/\s+/).filter(Boolean);
   if (classes.indexOf(className) >= 0) return element;
@@ -711,6 +732,83 @@ await test("settings search can find the options, and the index rows are never d
   };
   walk(tab.containerEl);
   assert.equal(hidden.length, index.length, "every index row is marked as hidden, and only those");
+});
+
+await test("a draft can be sent back with a correction instead of rejected", async () => {
+  const plugin = await makePlugin();
+  // Ask the review window for a decision, then drive it like a user.
+  hermes.openedModals.length = 0;
+  const asked = hermes.PreviewModal.ask(app, {
+    heading: "New note from Hermes",
+    notePath: "Kitchen notes.md",
+    content: "---\ntitle: Kitchen notes\n---\n\n# Kitchen notes\n\nDraft body.\n",
+    folders: [],
+    mode: "create",
+    conventions: null,
+    openAfter: false,
+  });
+  const modal = hermes.openedModals[hermes.openedModals.length - 1];
+  assert.ok(modal, "the review window opened");
+
+  const steer = findAllByClass(modal.contentEl, "hermes-notes-buttons")[0].children.filter(
+    (child) => String(child.textContent).indexOf("say what to change") >= 0
+  )[0];
+  assert.ok(steer, "there is a way to ask for a change");
+  click(steer, "the correction button");
+
+  const form = findByClass(modal.contentEl, "hermes-revise");
+  assert.ok(form, "the correction box exists");
+  assert.ok(String(form.className).indexOf("is-hidden") < 0, "and is visible: " + form.className);
+  const input = form.children.filter((child) => String(child.className).indexOf("hermes-revise-input") >= 0)[0];
+  assert.ok(input, "with a place to type");
+  input.value = "shorter, and keep my tags";
+
+  const send = findAllByClass(form, "hermes-notes-buttons")[0].children.filter(
+    (child) => String(child.textContent) === "Send to Hermes"
+  )[0];
+  click(send, "Send to Hermes");
+
+  const result = await asked;
+  assert.equal(result.action, "revise", "the window reports a revision rather than a write");
+  assert.equal(result.feedback, "shorter, and keep my tags", "with the correction");
+  assert.equal(result.path, "Kitchen notes.md", "and the draft it belongs to");
+  assert.ok(result.content.indexOf("Draft body.") >= 0, "including the draft itself");
+});
+
+await test("an empty correction is refused, and plain cancel still cancels", async () => {
+  const plugin = await makePlugin();
+  hermes.openedModals.length = 0;
+  const asked = hermes.PreviewModal.ask(app, {
+    heading: "New note",
+    notePath: "Note.md",
+    content: "# Note\n",
+    folders: [],
+    mode: "create",
+    conventions: null,
+    openAfter: false,
+  });
+  const modal = hermes.openedModals[hermes.openedModals.length - 1];
+  const steer = findAllByClass(modal.contentEl, "hermes-notes-buttons")[0].children.filter(
+    (child) => String(child.textContent).indexOf("say what to change") >= 0
+  )[0];
+  click(steer, "the correction button");
+  const form = findByClass(modal.contentEl, "hermes-revise");
+  assert.ok(form, "the correction box exists");
+  const send = findAllByClass(form, "hermes-notes-buttons")[0].children.filter(
+    (child) => String(child.textContent) === "Send to Hermes"
+  )[0];
+  click(send, "Send to Hermes, with nothing typed");
+  // The stub records the message string itself.
+  assert.ok(
+    hermes.notices.some((message) => String(message).indexOf("Type what should be different") >= 0),
+    "an empty correction says so: " + JSON.stringify(hermes.notices.slice(-1))
+  );
+
+  const cancel = findAllByClass(modal.contentEl, "hermes-notes-buttons")[0].children.filter(
+    (child) => ["Cancel", "Reject"].indexOf(String(child.textContent)) >= 0
+  )[0];
+  click(cancel, "Cancel");
+  assert.equal(await asked, null, "cancelling still cancels");
 });
 
 // --- the page cannot be blanked by one failing section --------------------

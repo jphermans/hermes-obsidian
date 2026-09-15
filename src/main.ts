@@ -86,6 +86,7 @@ import {
   fixUserPrompt,
   rewriteUserPrompt,
   systemPrompt,
+  revisionPrompt,
 } from "./prompts";
 
 const MAX_CONTEXT_CHARS = 12000;
@@ -105,6 +106,12 @@ const EXAMPLES = [
   "Summarise this note and tighten the prose",
   "Turn this into a project note with tasks",
 ];
+
+/** What a note request can be for — the same set askOnce accepts. */
+export type AskKind = "create" | "rewrite" | "fix" | "answer" | "title" | "fileops";
+
+/** What came back from the review window: written, dropped, or "do it again like this". */
+export type PresentOutcome = "saved" | "cancelled" | { revise: string };
 
 export default class HermesAgentNotesPlugin extends Plugin {
   settings!: HermesAgentNotesSettings;
@@ -1037,8 +1044,9 @@ export default class HermesAgentNotesPlugin extends Plugin {
 
     try {
       const context = await this.noteContext({ targetFolder: answer.folder, includeActive: answer.includeNote });
-      const raw = await this.askOnce("create", context, createUserPrompt(answer.prompt, context));
-      await this.presentNote("create", extractNote(raw), answer.prompt, answer.folder, null, null, "New note from Hermes");
+      await this.askAndPresent("create", context, createUserPrompt(answer.prompt, context), (note) =>
+        this.presentNote("create", note, answer.prompt, answer.folder, null, null, "New note from Hermes")
+      );
     } catch (error) {
       this.reportError(error);
     }
@@ -1064,8 +1072,9 @@ export default class HermesAgentNotesPlugin extends Plugin {
     try {
       const context = await this.noteContext({ targetFolder: answer.folder, includeActive: false, selection });
       const instruction = answer.prompt || "Turn this selection into a complete, self-contained note.";
-      const raw = await this.askOnce("create", context, createUserPrompt(instruction, context));
-      await this.presentNote("create", extractNote(raw), instruction, answer.folder, null, null, "New note from the selection");
+      await this.askAndPresent("create", context, createUserPrompt(instruction, context), (note) =>
+        this.presentNote("create", note, instruction, answer.folder, null, null, "New note from the selection")
+      );
     } catch (error) {
       this.reportError(error);
     }
@@ -1095,15 +1104,16 @@ export default class HermesAgentNotesPlugin extends Plugin {
       context.notePath = file.path;
       context.noteTitle = file.basename;
       context.activeNoteContent = original;
-      const raw = await this.askOnce("rewrite", context, rewriteUserPrompt(prompt || "Improve this note.", context));
-      await this.presentNote(
+      await this.askAndPresent("rewrite", context, rewriteUserPrompt(prompt || "Improve this note.", context), (note) =>
+        this.presentNote(
         "overwrite",
-        extractNote(raw),
+        note,
         prompt || file.basename,
         file.parent && file.parent.path !== "/" ? file.parent.path : "",
         file.path,
         original,
         "Hermes rewrote " + file.basename
+        )
       );
     } catch (error) {
       this.reportError(error);
@@ -1121,15 +1131,16 @@ export default class HermesAgentNotesPlugin extends Plugin {
       const context = await this.noteContext({ includeActive: true });
       context.notePath = file.path;
       context.activeNoteContent = original;
-      const raw = await this.askOnce("fix", context, fixUserPrompt(context));
-      await this.presentNote(
+      await this.askAndPresent("fix", context, fixUserPrompt(context), (note) =>
+        this.presentNote(
         "overwrite",
-        extractNote(raw),
+        note,
         file.basename,
         file.parent && file.parent.path !== "/" ? file.parent.path : "",
         file.path,
         original,
         "Obsidian fixes for " + file.basename
+        )
       );
     } catch (error) {
       this.reportError(error);
@@ -1140,6 +1151,27 @@ export default class HermesAgentNotesPlugin extends Plugin {
    * Shows the generated note, then writes it. On rewrite the existing
    * frontmatter is preserved and merged so no property is silently lost.
    */
+  /**
+   * Asks for a note, shows the draft, and if the reviewer asked for a change, sends the
+   * draft back with that correction rather than making them retype the request. The
+   * reference plugin offers the same escape hatch on a permission prompt ("Other…").
+   */
+  private async askAndPresent(
+    label: AskKind,
+    context: NoteContext,
+    userPrompt: string,
+    present: (note: string) => Promise<PresentOutcome>
+  ): Promise<void> {
+    let prompt = userPrompt;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const raw = await this.askOnce(label, context, prompt);
+      const outcome = await present(extractNote(raw));
+      if (typeof outcome !== "object") return;
+      prompt = revisionPrompt(userPrompt, extractNote(raw), outcome.revise);
+    }
+    new Notice("Five revisions in a row — nothing was written. Ask again when you know what should change.", 10000);
+  }
+
   private async presentNote(
     mode: "create" | "overwrite",
     note: string,
@@ -1148,10 +1180,10 @@ export default class HermesAgentNotesPlugin extends Plugin {
     existingPath: string | null,
     existingContent: string | null,
     heading: string
-  ): Promise<void> {
+  ): Promise<PresentOutcome> {
     if (!note.trim()) {
       new Notice("Hermes returned an empty note.");
-      return;
+      return "saved";
     }
     let content = note;
     if (existingContent !== null) {
@@ -1186,7 +1218,11 @@ export default class HermesAgentNotesPlugin extends Plugin {
     });
     if (!result) {
       if (existingContent !== null) new Notice("Rejected — the note was left untouched.");
-      return;
+      return "cancelled";
+    }
+    if (result.action === "revise") {
+      // Hand the draft and the correction back to Hermes instead of ending the flow.
+      return { revise: result.feedback || "" };
     }
 
     try {
@@ -1201,7 +1237,7 @@ export default class HermesAgentNotesPlugin extends Plugin {
             12000
           );
           await this.logError("Stale approval", "the note changed between review and save", result.path);
-          return;
+          return "cancelled";
         }
       }
       const written = await writeNote(
@@ -1219,9 +1255,11 @@ export default class HermesAgentNotesPlugin extends Plugin {
         const leaf = this.app.workspace.getLeaf(false);
         await leaf.openFile(written);
       }
+      return "saved";
     } catch (error) {
       new Notice("Could not write the note: " + (error instanceof Error ? error.message : String(error)));
       await this.logError("Write note", error, result.path);
+      return "cancelled";
     }
   }
 

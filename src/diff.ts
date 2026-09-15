@@ -168,3 +168,67 @@ export function firstChangedLine(before: string, after: string): number {
   }
   return oldLines.length === newLines.length ? 0 : limit;
 }
+
+export interface WordSegment {
+  text: string;
+  changed: boolean;
+}
+
+/** Split into words and the whitespace between them, so nothing is lost by re-joining. */
+function tokenize(text: string): string[] {
+  return (text || "").match(/\s+|[^\s]+/g) || [];
+}
+
+function unchangedMask(before: string[], after: string[]): { before: boolean[]; after: boolean[] } {
+  // Longest common subsequence over tokens: everything outside it is a change.
+  const rows = before.length + 1;
+  const cols = after.length + 1;
+  const table: number[][] = [];
+  for (let i = 0; i < rows; i++) table.push(new Array(cols).fill(0));
+  for (let i = before.length - 1; i >= 0; i--) {
+    for (let j = after.length - 1; j >= 0; j--) {
+      table[i][j] = before[i] === after[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+  const beforeSame = new Array(before.length).fill(false);
+  const afterSame = new Array(after.length).fill(false);
+  let i = 0;
+  let j = 0;
+  while (i < before.length && j < after.length) {
+    if (before[i] === after[j]) {
+      beforeSame[i] = true;
+      afterSame[j] = true;
+      i++;
+      j++;
+    } else if (table[i + 1][j] >= table[i][j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  return { before: beforeSame, after: afterSame };
+}
+
+function group(tokens: string[], same: boolean[]): WordSegment[] {
+  const segments: WordSegment[] = [];
+  for (let index = 0; index < tokens.length; index++) {
+    const changed = !same[index];
+    const last = segments[segments.length - 1];
+    // Whitespace takes the colour of the segment before it, so a highlight never starts with a space.
+    const flag = /^\s+$/.test(tokens[index]) && last ? last.changed : changed;
+    if (last && last.changed === flag) last.text += tokens[index];
+    else segments.push({ text: tokens[index], changed: flag });
+  }
+  return segments;
+}
+
+/**
+ * Word-level markup for a changed line, so a long line shows what actually changed rather
+ * than being replaced wholesale. Unchanged words are shared between both sides.
+ */
+export function wordDiff(before: string, after: string): { before: WordSegment[]; after: WordSegment[] } {
+  const left = tokenize(before);
+  const right = tokenize(after);
+  const mask = unchangedMask(left, right);
+  return { before: group(left, mask.before), after: group(right, mask.after) };
+}

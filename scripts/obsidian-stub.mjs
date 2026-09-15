@@ -146,13 +146,23 @@ function makeEl(tag = "div") {
       const next = want ? present : present.filter((entry) => entry !== name);
       el.className = next.join(" ");
     },
+    appendText(text) {
+      el.textContent = (el.textContent || "") + text;
+      return el;
+    },
     setText(text) {
       el.textContent = text;
     },
     setAttr() {},
+    // Listeners are recorded so a test can click what a user would click; a no-op
+    // addEventListener silently hid every UI flow from the suite.
+    listeners: [],
+    addEventListener(type, handler) {
+      el.listeners.push({ type, handler });
+      return el;
+    },
     getAttr: () => null,
     removeAttribute() {},
-    addEventListener() {},
     appendChild(child) {
       el.children.push(child);
       return child;
@@ -224,15 +234,24 @@ export class MarkdownView extends ItemView {
   }
 }
 
+export const openedModals = [];
+
 export class Modal extends Component {
   constructor(app) {
     super();
     this.app = app;
     this.contentEl = makeEl();
     this.titleEl = makeEl();
+    this.modalEl = makeEl();
   }
-  open() {}
-  close() {}
+  /** Records the instance so a test can drive the window a user would see. */
+  open() {
+    openedModals.push(this);
+    if (typeof this.onOpen === "function") this.onOpen();
+  }
+  close() {
+    if (typeof this.onClose === "function") this.onClose();
+  }
 }
 
 /** Chainable component shapes, matching Obsidian's (each returns the component). */

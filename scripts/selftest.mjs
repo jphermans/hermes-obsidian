@@ -1951,6 +1951,38 @@ test("the documented syntax checks reach the note preview", () => {
   assert.ok(text.indexOf("at least two hyphens") >= 0, "the table problem is there");
 });
 
+// ---------------------------------------------------------------------------
+// Reviewing a draft: word-level diffs and "not quite — change this"
+// ---------------------------------------------------------------------------
+
+test("a changed line shows which words changed", () => {
+  const changed = (segments) => segments.filter((segment) => segment.changed).map((segment) => segment.text.trim()).filter(Boolean).join(" | ");
+  // One word replaced: only that word is marked on each side.
+  const oneWord = hermes.wordDiff("The kitchen is 12 m2.", "The kitchen is 14 m2.");
+  assert.equal(changed(oneWord.before), "12", "the old value");
+  assert.equal(changed(oneWord.after), "14", "the new one");
+  // A rewritten tail is marked as a phrase rather than the whole line.
+  const pair = hermes.wordDiff("The kitchen is 12 m2 and needs work.", "The kitchen is 14 m2 and needs a new floor.");
+  assert.ok(changed(pair.after).indexOf("14") >= 0, "the new value is marked: " + changed(pair.after));
+  assert.ok(changed(pair.after).indexOf("a new floor") >= 0, "and so is the added phrase");
+  assert.equal(changed(pair.before), "12 | work.", "the old value and the phrase it replaced");
+  // Re-joining the segments always gives the original line back, whitespace included.
+  assert.equal(pair.before.map((segment) => segment.text).join(""), "The kitchen is 12 m2 and needs work.");
+  assert.equal(pair.after.map((segment) => segment.text).join(""), "The kitchen is 14 m2 and needs a new floor.");
+  // Identical or empty sides do not invent changes.
+  assert.deepEqual(hermes.wordDiff("same", "same").after.filter((segment) => segment.changed), []);
+  assert.deepEqual(hermes.wordDiff("", "added").before, []);
+});
+
+test("the revision prompt carries the draft, the correction and the original request", () => {
+  const prompt = hermes.revisionPrompt("Write a note about the kitchen", "# Kitchen\n\nToo long.", "shorter, and keep my tags");
+  assert.ok(prompt.indexOf("shorter, and keep my tags") >= 0, "the correction is quoted");
+  assert.ok(prompt.indexOf("# Kitchen\n\nToo long.") >= 0, "the draft comes back with it");
+  assert.ok(prompt.indexOf("Write a note about the kitchen") >= 0, "and the original request");
+  assert.ok(prompt.indexOf("return the complete corrected note") >= 0, "with the same output contract");
+  assert.ok(hermes.revisionPrompt("", "draft", "fix it").indexOf("The original request") < 0, "no original request, no section for it");
+});
+
 console.log("selftest: " + passed + " passed, " + failed + " failed");
 if (failures.length > 0) {
   console.log("\nFailures:");

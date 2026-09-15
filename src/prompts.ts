@@ -123,6 +123,31 @@ Content quality
 - Never invent facts about the user's files, projects or people. If information is missing, write the note around what is known.
 - Match the language of the request.`;
 
+/**
+ * The user reviewed a draft and said what to change. Rather than making them retype the
+ * request, the draft and the correction go back together — the same hand-off the reference
+ * plugin offers as "Other…" instead of a plain reject.
+ */
+export function revisionPrompt(originalUserPrompt: string, draft: string, feedback: string): string {
+  const lines: string[] = [];
+  lines.push("The user reviewed the note you drafted and asked for this change:");
+  lines.push("");
+  lines.push(feedback.trim());
+  lines.push("");
+  lines.push("Apply it and return the complete corrected note, following the same rules as before. Return the note itself and nothing else.");
+  lines.push("");
+  lines.push("Your previous draft was:");
+  lines.push("");
+  lines.push(draft.trim());
+  if (originalUserPrompt.trim().length > 0) {
+    lines.push("");
+    lines.push("The original request was:");
+    lines.push("");
+    lines.push(originalUserPrompt.trim());
+  }
+  return lines.join("\n");
+}
+
 export function conventionsBlock(conventions: VaultConventions | null): string {
   if (!conventions || conventions.unknown) return "";
   const percent = (value: number, total: number) => (total > 0 ? Math.round((value / total) * 100) : 0);

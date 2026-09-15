@@ -75,7 +75,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 
 The setup page is **tabbed** — *Connection · Remote access · Notes · Chat & prompts · Backup & errors · Setup guide* — and remembers the tab you were last on, so no view is a wall of settings. The installed build is a label at the top of every tab.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.37** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.38** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 

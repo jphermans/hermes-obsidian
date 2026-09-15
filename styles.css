@@ -893,6 +893,32 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   display: none !important;
 }
 
+/* The correction box under a drafted note, and the words that changed in a diff line. */
+.hermes-revise {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--hermes-border);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+}
+
+.hermes-revise.is-hidden {
+  display: none;
+}
+
+.hermes-revise-input {
+  width: 100%;
+  resize: vertical;
+  font-size: var(--font-ui-small);
+  margin-bottom: 8px;
+}
+
+.hermes-word-change {
+  background: var(--hermes-accent-soft);
+  border-radius: 3px;
+  box-shadow: inset 0 -1px 0 var(--hermes-accent);
+}
+
 /* Setup page tabs: one section at a time instead of one long page.
    Own class names on purpose — the preview modal's tabs use .hermes-tab, and sharing it
    meant these rules restyled that modal (it lost its filled background and active state). */

@@ -1,3 +1,10 @@
+// The preview modal focuses its first field when it opens; Node has no animation frames.
+if (typeof (globalThis as any).requestAnimationFrame !== "function") {
+  (globalThis as any).requestAnimationFrame = (fn: () => void) => {
+    fn();
+  };
+}
+
 /**
  * In-memory vault used by the tests: mirrors the slice of the Obsidian App
  * API that the plugin actually calls, so file creation, collision handling,

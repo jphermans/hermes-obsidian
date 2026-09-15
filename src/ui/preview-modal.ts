@@ -3,7 +3,7 @@ import { copyText } from "./clipboard";
 import { sanitizeFilename } from "../note-writer";
 import { validateNote } from "../validate";
 import type { NoteCheck } from "../validate";
-import { diffForDisplay, diffLines, summarizeDiff } from "../diff";
+import { diffForDisplay, diffLines, summarizeDiff, wordDiff } from "../diff";
 import type { VaultConventions } from "../types";
 
 export interface PreviewModalOptions {
@@ -20,10 +20,23 @@ export interface PreviewModalOptions {
 }
 
 export interface PreviewModalResult {
-  action: "create" | "overwrite" | "append" | "cancel";
+  action: "create" | "overwrite" | "append" | "cancel" | "revise";
   path: string;
   content: string;
   openAfter: boolean;
+  /** Set for action "revise": what the user wants changed instead. */
+  feedback?: string;
+}
+
+/** Writes a line's text, wrapping the words that changed. */
+function appendWordSegments(row: HTMLElement, segments: { text: string; changed: boolean }[]): void {
+  for (const segment of segments) {
+    if (!segment.changed) {
+      row.appendText(segment.text);
+      continue;
+    }
+    row.createEl("span", { cls: "hermes-word-change", text: segment.text });
+  }
 }
 
 function splitPath(path: string): { folder: string; name: string } {
@@ -47,8 +60,13 @@ export class PreviewModal extends Modal {
   private bodyEl!: HTMLElement;
   private pathHint!: HTMLElement;
   private view: "changes" | "preview" | "raw" = "preview";
+  private feedbackOpen = false;
   private tabs: { key: "changes" | "preview" | "raw"; button: HTMLButtonElement }[] = [];
   private renderComponent: Component | null = null;
+  private feedbackEl!: HTMLElement;
+  private steerButton!: HTMLButtonElement;
+  private feedbackInput: HTMLTextAreaElement | null = null;
+  private rejectButton!: HTMLButtonElement;
 
   /** A before/after review rather than a plain preview. */
   private reviewing(): boolean {
@@ -152,18 +170,21 @@ export class PreviewModal extends Modal {
       cls: "mod-cta",
     });
     primary.addEventListener("click", () => this.submit());
-    if (reviewing) {
-      const reject = buttons.createEl("button", { text: "Reject" });
-      reject.addEventListener("click", () => this.close());
-    }
+
+    // Rejecting a draft is usually "not like that" — asking for the change costs one line
+    // instead of a whole new prompt, so the draft and the correction go back together.
+    this.steerButton = buttons.createEl("button", {
+      text: reviewing ? "Reject & say what to change…" : "Not quite — say what to change…",
+    });
+    this.steerButton.addEventListener("click", () => this.openFeedback());
+
+    this.rejectButton = buttons.createEl("button", { text: reviewing ? "Reject" : "Cancel" });
+    this.rejectButton.addEventListener("click", () => this.close());
+
     const copy = buttons.createEl("button", { text: "Copy Markdown" });
     copy.addEventListener("click", () => {
       this.copyMarkdown();
     });
-    if (!reviewing) {
-      const cancel = buttons.createEl("button", { text: "Cancel" });
-      cancel.addEventListener("click", () => this.close());
-    }
 
     // Approve without reaching for the mouse.
     contentEl.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -172,6 +193,9 @@ export class PreviewModal extends Modal {
         this.submit();
       }
     });
+
+    this.feedbackEl = contentEl.createDiv({ cls: "hermes-revise is-hidden" });
+    this.renderFeedbackForm();
 
     this.renderBody();
     this.updatePathHint();
@@ -258,6 +282,55 @@ export class PreviewModal extends Modal {
   }
 
   /** The note as it is, as it would be, and what changed in between. */
+  /** The correction box: what should be different, sent back with the draft. */
+  private renderFeedbackForm(): void {
+    this.feedbackEl.empty();
+    this.feedbackEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "Nothing is written. Hermes gets your note back together with this correction and drafts it again.",
+    });
+    this.feedbackInput = this.feedbackEl.createEl("textarea", { cls: "hermes-revise-input" });
+    this.feedbackInput.rows = 3;
+    this.feedbackInput.placeholder = "e.g. shorter, drop the second section, keep my tags as they are";
+    this.feedbackInput.setAttr("spellcheck", "false");
+    const row = this.feedbackEl.createDiv({ cls: "hermes-notes-buttons" });
+    const send = row.createEl("button", { text: "Send to Hermes", cls: "mod-cta" });
+    send.addEventListener("click", () => this.sendFeedback());
+    const back = row.createEl("button", { text: "Back" });
+    back.addEventListener("click", () => this.closeFeedback());
+  }
+
+  private openFeedback(): void {
+    this.feedbackOpen = true;
+    this.feedbackEl.removeClass("is-hidden");
+    this.steerButton.addClass("is-hidden");
+    this.rejectButton.addClass("is-hidden");
+    const input = this.feedbackInput;
+    if (!Platform.isMobile && input) requestAnimationFrame(() => input.focus());
+  }
+
+  private closeFeedback(): void {
+    this.feedbackOpen = false;
+    this.feedbackEl.addClass("is-hidden");
+    this.steerButton.removeClass("is-hidden");
+    this.rejectButton.removeClass("is-hidden");
+  }
+
+  private sendFeedback(): void {
+    const feedback = this.feedbackInput ? this.feedbackInput.value.trim() : "";
+    if (feedback.length === 0) {
+      new Notice("Type what should be different first.");
+      return;
+    }
+    this.finish({
+      action: "revise",
+      path: this.currentPath(),
+      content: this.content,
+      openAfter: this.openAfter,
+      feedback,
+    });
+  }
+
   private renderChanges(): void {
     const before = this.options.before || "";
     const diff = diffLines(before, this.content);
@@ -268,8 +341,19 @@ export class PreviewModal extends Modal {
       return;
     }
     const block = this.bodyEl.createDiv({ cls: "hermes-diff" });
-    for (const line of diffForDisplay(diff)) {
+    const shown = diffForDisplay(diff);
+    for (let index = 0; index < shown.length; index++) {
+      const line = shown[index];
       const row = block.createDiv({ cls: "hermes-diff-line is-" + line.type });
+      // A replaced line is usually a long line with a few words changed: pair it with the
+      // removed line that follows and mark the words that differ (what the reference plugin's
+      // ToolCallRenderer does with its word diff).
+      const partner = line.type === "add" && shown[index + 1] && shown[index + 1].type === "remove" ? shown[index + 1] : null;
+      if (partner) {
+        const words = wordDiff(partner.text, line.text).after;
+        appendWordSegments(row, words);
+        continue;
+      }
       row.createEl("span", {
         cls: "hermes-diff-sign",
         text: line.type === "add" ? "+" : line.type === "remove" ? "−" : " ",
@@ -288,13 +372,17 @@ export class PreviewModal extends Modal {
       new Notice("The note is empty.");
       return;
     }
-    this.settled = true;
-    const result: PreviewModalResult = {
+    this.finish({
       action: this.options.mode,
       path: this.currentPath(),
       content: content + "\n",
       openAfter: this.openAfter,
-    };
+    });
+  }
+
+  /** Settles the promise exactly once and closes the window. */
+  private finish(result: PreviewModalResult): void {
+    this.settled = true;
     const settle = this.settle;
     this.settle = null;
     this.close();
