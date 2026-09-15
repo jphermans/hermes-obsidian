@@ -21,7 +21,11 @@ export interface ConnectionProfile {
   at: number;
 }
 
-export const MAX_PROFILES = 12;
+/**
+ * One saved setup, deliberately. Several saved connections made it hard to tell
+ * which one was live; saving again replaces the single slot.
+ */
+export const MAX_PROFILES = 1;
 
 /** The connection fields, and nothing else. */
 export function captureProfile(settings: HermesAgentNotesSettings, name: string, at: number): ConnectionProfile {

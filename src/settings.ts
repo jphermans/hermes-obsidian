@@ -7,7 +7,6 @@ import type { AccessMode } from "./types";
 import { copyText } from "./ui/clipboard";
 import { ErrorsModal } from "./ui/errors-modal";
 import { QuickPromptModal } from "./ui/quick-prompt-modal";
-import { PromptModal } from "./ui/prompt-modal";
 import { describeProfile, profileMatches } from "./profiles";
 import { listFolders } from "./vault-rules";
 
@@ -1017,31 +1016,38 @@ export class HermesSettingTab extends PluginSettingTab {
           .onClick(() => new QuickPromptModal(this.app, prompts, null, (next) => void this.savePrompts(next)).open())
       );
 
-    new Setting(containerEl).setName("Connections").setHeading();
-    const profiles = this.plugin.settings.profiles;
-    const profileList = containerEl.createDiv({ cls: "hermes-library" });
-    if (profiles.length === 0) {
-      profileList.createEl("p", {
+    new Setting(containerEl).setName("Saved setup").setHeading();
+    // One slot on purpose: several saved connections made it hard to tell which one
+    // was live, so saving always replaces it.
+    const saved = this.plugin.settings.profiles[0];
+    const setupList = containerEl.createDiv({ cls: "hermes-library" });
+    if (!saved) {
+      setupList.createEl("p", {
         cls: "hermes-notes-desc",
-        text: "No saved connections yet — fill in the connection fields above, then save them under a name here.",
+        text: "Nothing saved yet. Save the connection above once, and you can switch back to it after experimenting with a route or a profile.",
       });
-    }
-    for (const profile of profiles) {
-      const row = profileList.createDiv({ cls: "hermes-library-row" });
+    } else {
+      const row = setupList.createDiv({ cls: "hermes-library-row" });
       const main = row.createDiv({ cls: "hermes-library-main" });
-      main.createEl("span", { cls: "hermes-history-title", text: profile.name });
-      main.createEl("span", { cls: "hermes-history-meta", text: describeProfile(profile) });
-      const active = profileMatches(this.plugin.settings, profile);
-      const use = row.createEl("button", { text: active ? "Active" : "Use", cls: active ? "" : "mod-cta" });
+      main.createEl("span", { cls: "hermes-history-title", text: saved.name });
+      main.createEl("span", { cls: "hermes-history-meta", text: describeProfile(saved) });
+      const active = profileMatches(this.plugin.settings, saved);
+      const use = row.createEl("button", { text: active ? "Active" : "Switch to this", cls: active ? "" : "mod-cta" });
       if (!active) {
-        use.addEventListener("click", () => void this.plugin.switchProfile(profile.id).then(() => this.display()));
+        use.addEventListener("click", () => void this.plugin.switchProfile(saved.id).then(() => this.display()));
       }
-      const remove = row.createEl("button", { text: "Delete" });
-      remove.addEventListener("click", () => void this.plugin.deleteProfile(profile.id).then(() => this.display()));
+      const remove = row.createEl("button", { text: "Forget" });
+      remove.addEventListener("click", () => void this.plugin.deleteProfile(saved.id).then(() => this.display()));
     }
     new Setting(containerEl)
-      .setDesc("Saves the URL, key, extra headers, profile prefix, model and provider above under a name.")
-      .addButton((button) => button.setButtonText("Save this connection as…").onClick(() => void this.promptProfileName()));
+      .setDesc(
+        "Keeps the URL, key, extra headers, profile prefix, model and provider as one setup. Saving again replaces it — there is only ever one."
+      )
+      .addButton((button) =>
+        button
+          .setButtonText(saved ? "Save again (replaces it)" : "Save this setup")
+          .onClick(() => void this.plugin.saveSetup().then(() => this.display()))
+      );
 
     new Setting(containerEl)
       .setName("Follow edits")
@@ -1058,18 +1064,6 @@ export class HermesSettingTab extends PluginSettingTab {
 
   private async savePrompts(prompts: typeof this.plugin.settings.quickPrompts): Promise<void> {
     await this.plugin.saveQuickPrompts(prompts);
-    this.display();
-  }
-
-  private async promptProfileName(): Promise<void> {
-    const answer = await PromptModal.ask(this.app, {
-      title: "Save this connection",
-      placeholder: "Name, e.g. Local or Server",
-      submitLabel: "Save",
-      rows: 1,
-    });
-    if (!answer) return;
-    await this.plugin.saveCurrentAsProfile(answer.prompt);
     this.display();
   }
 

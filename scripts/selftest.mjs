@@ -1425,6 +1425,19 @@ test("a connection profile captures and restores the connection", () => {
   assert.equal(hermes.profileMatches(different, capture), false);
 });
 
+test("there is exactly one saved setup, and it keeps its id", () => {
+  // Deliberate: several saved connections made it impossible to tell which was live.
+  assert.equal(hermes.MAX_PROFILES, 1, "one slot only");
+  const base = Object.assign({}, hermes.DEFAULT_SETTINGS);
+  let list = hermes.upsertProfile([], hermes.captureProfile(base, "First", 10));
+  assert.equal(list.length, 1);
+  list = hermes.upsertProfile(list, hermes.captureProfile(base, "Second", 20));
+  assert.equal(list.length, 1, "a second save replaces the first, whatever it was called");
+  assert.equal(list[0].name, "Second");
+  assert.equal(list[0].at, 20);
+  assert.equal(list[0].id, hermes.upsertProfile(list, hermes.captureProfile(base, "Second", 30))[0].id, "id survives a re-save");
+});
+
 test("profiles are bounded, replaceable by name, and never leak the key", () => {
   const base = Object.assign({}, hermes.DEFAULT_SETTINGS, { apiKey: "super-secret-key" });
   const one = hermes.captureProfile(base, "Server", 10);

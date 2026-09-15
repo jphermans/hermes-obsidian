@@ -535,22 +535,32 @@ await test("a conversation is stored, listed, searchable and removable", async (
   assert.deepEqual(await plugin.listHistory(), []);
 });
 
-await test("a saved connection can be switched back to", async () => {
+await test("one setup can be saved, and saving again replaces it", async () => {
   const plugin = await makePlugin();
   plugin.settings.profiles = [];
-  await plugin.saveCurrentAsProfile("Mock server");
-  assert.equal(plugin.settings.profiles.length, 1);
-  assert.ok(plugin.settings.profiles[0].name === "Mock server", JSON.stringify(plugin.settings.profiles[0]));
 
-  const original = plugin.settings.baseUrl;
+  await plugin.saveSetup();
+  assert.equal(plugin.settings.profiles.length, 1, "exactly one slot");
+  const first = plugin.settings.profiles[0];
+  assert.ok(first.name.length > 3, "the setup is labelled from the host: " + first.name);
+  assert.ok(first.name.includes("127.0.0.1"), "label should name the host: " + first.name);
+
+  // Saving again must not produce a second entry — that is the whole point.
   plugin.settings.baseUrl = "https://elsewhere.example.com";
-  plugin.settings.apiKey = "another-key";
-  await plugin.switchProfile(plugin.settings.profiles[0].id);
-  assert.equal(plugin.settings.baseUrl, original, "the saved URL is restored");
-  assert.equal(plugin.settings.apiKey, "test-key", "and the saved key");
+  await plugin.saveSetup();
+  assert.equal(plugin.settings.profiles.length, 1, "still one slot after a second save");
+  const second = plugin.settings.profiles[0];
+  assert.equal(second.id, first.id, "the slot keeps its id");
+  assert.ok(second.baseUrl.includes("elsewhere"), "the slot holds the newest setup: " + second.baseUrl);
+
+  // Switch back: the saved values win over the live ones.
+  plugin.settings.baseUrl = "http://127.0.0.1:8642";
+  plugin.settings.apiKey = "wrong-key";
+  await plugin.switchProfile(second.id);
+  assert.equal(plugin.settings.baseUrl, "https://elsewhere.example.com", "the saved URL is restored");
   assert.deepEqual(plugin.settings.availableModels, [], "the old model list is dropped with the connection");
 
-  await plugin.deleteProfile(plugin.settings.profiles[0].id);
+  await plugin.deleteProfile(second.id);
   assert.equal(plugin.settings.profiles.length, 0);
 });
 

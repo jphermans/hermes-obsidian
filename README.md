@@ -73,7 +73,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 >
 > The setup page stays short on purpose: the per-route recipes live behind the **How do you reach Hermes?** dropdown (that route's commands, URL shape, headers and a *Test this route* button — plus a link to its walkthrough), and the guide itself lists the routes as links instead of printing every recipe at once.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.29** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.30** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -445,7 +445,7 @@ What this buys you:
 - **Its own key**, so the plugin's credential can be rotated or revoked without touching anything else.
 - `/v1/models` advertises the **profile name** (`obsidian`), which is how you confirm the routing took effect — it appears in the plugin's model dropdown.
 
-Save the whole connection with *Connections → Save this connection as…* so you can switch between "Local" and "Vault profile" in one click.
+Save the live connection once under **Saved setup** ("Save this setup") so you can switch back to it after experimenting. There is deliberately only **one** saved setup — saving again replaces it, so nothing can be ambiguous about which one is live.
 
 **A URL-selected profile only accepts a key of at least 16 characters.** Hermes resolves a named profile's key with `has_usable_secret(key, min_length=16)` and treats anything shorter as unusable, so it computes an expected key of empty and answers **401 whatever the plugin sends** — even when the `.env` and the plugin hold the same string. The default scope's own guard is far more lenient, which is why this only appears once a prefix is set. Generate one properly:
 
@@ -627,7 +627,7 @@ Both files contain your **API key and any extra headers** in plain text, because
 | **The note ignores my model choice** | Hermes uses its own default model unless you also set a **provider override** (or enable `gateway.platforms.api_server.direct_model_requests` on the host). |
 | **Notes do not match my style** | Run **Show detected vault conventions** to see what was inferred, raise *Notes to analyse*, then rescan. |
 | **Where do I put the prompts I keep retyping?** | Settings → Hermes Agent Notes → **Quick prompts**. They appear as chips above the chat input; typing `!` searches them. `{note}` in a prompt becomes the open note's name, and `@[[Note]]` pulls that note in as a mention. Clicking a chip sends it immediately — while an answer is running it is queued instead. |
-| **How do I switch between my local and remote Hermes?** | Fill in the connection for one of them, then **Connections → Save this connection as…**. Repeat for the other. *Use* switches: URL, key, headers, profile prefix, model and provider are all replaced, and the advertised model list is cleared because the new endpoint has its own. |
+| **How do I switch between my local and remote Hermes?** | There is one **Saved setup** slot. Save the connection you use most, change the fields for the other when you need it, and press *Switch to this* to go back. Switching replaces the URL, key, headers, profile prefix, model and provider and clears the advertised model list, because the other endpoint has its own. |
 | **Can I find a conversation from yesterday?** | The 🕘 button in the chat header. It searches titles *and* message bodies, shows how long ago each was, and *Restore* puts it back in the panel — the next message simply continues with a new Hermes session. Sessions are capped at 30, newest kept, in `history.json` next to `errors.log`. |
 | **The note opened but jumped somewhere odd** | That is **Follow edits**: after an approved edit the note opens at the first changed line. Switch it off under **Follow edits** if you would rather stay where you were. |
 | **Do my Obsidian conversations mix with my other Hermes work?** | Yes by default — the plugin talks to your main profile, so vault prompts and answers sit in the same session store and memory as everything else. Give the vault its own profile to keep it in one folder: see [Keeping vault work in its own Hermes profile](#keeping-vault-work-in-its-own-hermes-profile). |

@@ -832,16 +832,23 @@ export default class HermesAgentNotesPlugin extends Plugin {
     await this.saveSettings();
   }
 
-  /** Saves the live connection under a name, replacing one with the same name. */
-  async saveCurrentAsProfile(name: string): Promise<void> {
-    const captured = captureProfile(this.settings, name, Date.now());
-    const existing = this.settings.profiles.find(
-      (entry) => entry.name.toLowerCase() === captured.name.toLowerCase()
-    );
-    const profile = existing ? { ...captured, id: existing.id, at: Date.now() } : captured;
+  /**
+   * Saves the live connection into the single saved-setup slot. There is only one,
+   * so this always replaces whatever was there — no list to reason about.
+   */
+  async saveSetup(): Promise<void> {
+    const label = this.setupLabel();
+    const captured = captureProfile(this.settings, label, Date.now());
+    const existing = this.settings.profiles[0];
+    const profile = existing ? { ...captured, id: existing.id } : captured;
     this.settings.profiles = upsertProfile(this.settings.profiles, profile);
     await this.saveSettings();
-    new Notice("Saved this connection as “" + profile.name + "”.", 6000);
+    new Notice("Setup saved" + (existing ? " — it replaced the previous one." : ": ") + label, 6000);
+  }
+
+  /** A short, recognisable name for the saved setup: the host it points at. */
+  private setupLabel(): string {
+    return describeProfile(captureProfile(this.settings, "", Date.now()));
   }
 
   async switchProfile(id: string): Promise<void> {
