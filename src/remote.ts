@@ -279,3 +279,25 @@ export function apiKeyAdvice(profile: string, apiKey: string): string | null {
   }
   return null;
 }
+
+/** Where a key for this route belongs on the Hermes host. */
+export function apiKeyEnvTarget(prefix: string): string {
+  const name = (prefix || "").trim();
+  if (name.length === 0 || name.toLowerCase() === "default") return "~/.hermes/.env";
+  return "~/.hermes/profiles/" + name + "/.env";
+}
+
+/**
+ * A fresh key long enough for a URL-selected profile (48 hex characters).
+ * `random` is injectable so the shape can be asserted without guessing.
+ */
+export function randomApiKey(bytes = 24, random: () => number = Math.random): string {
+  const size = Math.max(16, Math.floor(bytes));
+  let out = "";
+  for (let index = 0; index < size; index++) {
+    out += Math.floor(Math.max(0, Math.min(0.999999, random())) * 256)
+      .toString(16)
+      .padStart(2, "0");
+  }
+  return out;
+}

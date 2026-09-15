@@ -117,6 +117,8 @@ function makeEl(tag = "div") {
     createEl: (childTag, options) => {
       const child = makeEl(childTag);
       if (options && options.text) child.textContent = options.text;
+      // Keep the class name: the tests use it to find sections of the settings page.
+      if (options && options.cls) child.className = options.cls;
       el.children.push(child);
       return child;
     },
@@ -213,6 +215,66 @@ export class Modal extends Component {
   close() {}
 }
 
+/** Chainable component shapes, matching Obsidian's (each returns the component). */
+function chainable(inputEl, extra = {}) {
+  const component = {
+    inputEl,
+    value: "",
+    setValue(value) {
+      component.value = value;
+      inputEl.value = value;
+      return component;
+    },
+    setPlaceholder(text) {
+      inputEl.placeholder = text;
+      return component;
+    },
+    setDisabled() {
+      return component;
+    },
+    setLimit() {
+      return component;
+    },
+    setDynamicTooltip() {
+      return component;
+    },
+    setLimits() {
+      return component;
+    },
+    onChange(handler) {
+      component.changeHandler = handler;
+      return component;
+    },
+    addOption() {
+      return component;
+    },
+    addOptions() {
+      return component;
+    },
+    setButtonText(text) {
+      component.buttonText = text;
+      return component;
+    },
+    setIcon(icon) {
+      component.icon = icon;
+      return component;
+    },
+    setTooltip(tooltip) {
+      component.tooltip = tooltip;
+      return component;
+    },
+    setCta() {
+      return component;
+    },
+    onClick(handler) {
+      component.clickHandler = handler;
+      return component;
+    },
+    ...extra,
+  };
+  return component;
+}
+
 export class Setting {
   constructor(containerEl) {
     this.containerEl = containerEl || makeEl();
@@ -232,63 +294,32 @@ export class Setting {
     return this;
   }
   addText(callback) {
-    callback({
-      inputEl: this.inputEl,
-      setValue: () => this,
-      setPlaceholder: () => this,
-      onChange: () => this,
-      setDisabled: () => this,
-      setLimit: () => this,
-    });
+    callback(chainable(this.inputEl));
     return this;
   }
   addTextArea(callback) {
-    const el = makeEl("textarea");
-    callback({
-      inputEl: el,
-      setValue: () => this,
-      setPlaceholder: () => this,
-      onChange: () => this,
-      setDisabled: () => this,
-    });
+    callback(chainable(makeEl("textarea")));
     return this;
   }
   addToggle(callback) {
-    callback({ setValue: () => this, onChange: () => this, setDisabled: () => this });
+    callback(chainable(makeEl("input")));
     return this;
   }
   addDropdown(callback) {
-    callback({
-      addOption: () => this,
-      addOptions: () => this,
-      setValue: () => this,
-      onChange: () => this,
-      selectEl: makeEl("select"),
-    });
+    callback(chainable(makeEl("select"), { selectEl: makeEl("select") }));
     return this;
   }
   addSlider(callback) {
-    callback({
-      setLimits: () => this,
-      setValue: () => this,
-      setDynamicTooltip: () => this,
-      onChange: () => this,
-    });
+    callback(chainable(makeEl("input")));
     return this;
   }
   addButton(callback) {
-    callback({
-      setButtonText: () => this,
-      setIcon: () => this,
-      setTooltip: () => this,
-      setCta: () => this,
-      onClick: () => this,
-      buttonEl: makeEl("button"),
-    });
+    callback(chainable(makeEl("button")));
     return this;
   }
   addExtraButton(callback) {
-    return this.addButton(callback);
+    callback(chainable(makeEl("button")));
+    return this;
   }
 }
 

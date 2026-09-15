@@ -879,6 +879,58 @@ body.theme-light .hermes-msg-user .hermes-bubble {
   min-height: 24px;
 }
 
+/* Setup page tabs: one section at a time instead of one long page. */
+.hermes-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 18px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hermes-border);
+}
+
+.hermes-tab {
+  font: inherit;
+  font-size: var(--font-ui-small);
+  min-height: 34px;
+  padding: 6px 12px;
+  color: var(--hermes-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.hermes-tab:hover {
+  color: var(--text-normal);
+  background: var(--hermes-surface-quiet);
+}
+
+.hermes-tab.is-active {
+  color: var(--hermes-accent);
+  font-weight: 700;
+  background: var(--hermes-accent-soft);
+  border-color: var(--hermes-accent);
+}
+
+.hermes-tab-body > h2:first-child {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+@media screen and (max-width: 480px) {
+  .hermes-tabs {
+    gap: 6px;
+  }
+
+  .hermes-tab {
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+}
+
 /* Dropdowns: the selected value is the choice you made, so make it legible at a
    glance instead of plain grey on grey. */
 .hermes-settings select,

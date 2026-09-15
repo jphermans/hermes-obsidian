@@ -18,6 +18,7 @@ export * from "../src/vault-rules";
 export * from "../src/note-writer";
 export * from "../src/validate";
 export { transportLabel } from "../src/ui/chat-view";
+export { HermesSettingTab } from "../src/settings";
 export { Platform, setPlatform, notices } from "obsidian";
 export { makeApp, makeAppObject } from "./test-support";
 export { default as HermesAgentNotesPlugin } from "../src/main";

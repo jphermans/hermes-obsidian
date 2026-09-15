@@ -73,7 +73,9 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 >
 > The setup page stays short on purpose: the per-route recipes live behind the **How do you reach Hermes?** dropdown (that route's commands, URL shape, headers and a *Test this route* button — plus a link to its walkthrough), and the guide itself lists the routes as links instead of printing every recipe at once.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.30** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+The setup page is **tabbed** — *Connection · Remote access · Notes · Chat & prompts · Backup & errors · Setup guide* — and remembers the tab you were last on, so no view is a wall of settings. The installed build is a label at the top of every tab.
+
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.31** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -416,6 +418,8 @@ By default the plugin talks to your **main** Hermes profile, so every prompt and
 hermes profile create obsidian      # creates the profile and an `obsidian` command
 obsidian setup                      # its own model and provider keys
 ```
+
+**Make a separate key for this profile — do not reuse another profile's.** A URL-selected profile authenticates with its *own* `API_SERVER_KEY` and nothing else: the default profile's key, or any other profile's key, always answers **401**. The plugin's ⟳ button beside the API key field generates a 48-character key and copies the whole `API_SERVER_KEY=…` line for you (or run `openssl rand -hex 24` yourself). It must be at least 16 characters.
 
 Enable its API server in **that profile's** `.env` — `~/.hermes/profiles/obsidian/.env` (the flag is an environment variable, not a `config.yaml` key):
 

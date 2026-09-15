@@ -1,7 +1,7 @@
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type HermesAgentNotesPlugin from "./main";
 import { cleartextWarning, describeError, endpointsFor, obsidianOrigins } from "./hermes-client";
-import { REMOTE_PRESETS, apiKeyAdvice, mergeHeaderLines, presetFor } from "./remote";
+import { REMOTE_PRESETS, apiKeyAdvice, apiKeyEnvTarget, mergeHeaderLines, presetFor, randomApiKey } from "./remote";
 import { loopbackBlockMessage } from "./settings-file";
 import type { AccessMode } from "./types";
 import { copyText } from "./ui/clipboard";
@@ -44,19 +44,69 @@ export class HermesSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
+  /** The setup page, split so no single view is a wall of settings. */
+  private static readonly TABS: { id: string; label: string }[] = [
+    { id: "connection", label: "Connection" },
+    { id: "remote", label: "Remote access" },
+    { id: "notes", label: "Notes" },
+    { id: "chat", label: "Chat & prompts" },
+    { id: "backup", label: "Backup & errors" },
+    { id: "guide", label: "Setup guide" },
+  ];
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.addClass("hermes-settings");
 
     this.renderVersionLabel(containerEl);
-    this.renderConnection(containerEl);
-    this.renderRemoteAccess(containerEl);
-    this.renderPromptTest(containerEl);
-    this.renderNotes(containerEl);
-    this.renderConventions(containerEl);
-    this.renderSettingsFile(containerEl);
-    this.renderGuide(containerEl);
+
+    const known = HermesSettingTab.TABS;
+    const wanted = this.plugin.settings.settingsTab || "connection";
+    const active = known.some((tab) => tab.id === wanted) ? wanted : "connection";
+
+    const strip = containerEl.createDiv({ cls: "hermes-tabs" });
+    for (const tab of known) {
+      const button = strip.createEl("button", {
+        text: tab.label,
+        cls: tab.id === active ? "hermes-tab is-active" : "hermes-tab",
+      });
+      button.setAttr("aria-selected", tab.id === active ? "true" : "false");
+      button.addEventListener("click", () => {
+        this.plugin.settings.settingsTab = tab.id;
+        void this.plugin.saveSettings();
+        this.display();
+      });
+    }
+
+    const body = containerEl.createDiv({ cls: "hermes-tab-body" });
+    this.renderTab(active, body);
+  }
+
+  /** One tab's content. Only the visible tab is built, so the page stays cheap. */
+  private renderTab(id: string, el: HTMLElement): void {
+    switch (id) {
+      case "remote":
+        this.renderRemoteAccess(el);
+        return;
+      case "notes":
+        this.renderNotes(el);
+        this.renderConventions(el);
+        return;
+      case "chat":
+        this.renderLibrary(el);
+        return;
+      case "backup":
+        this.renderSettingsFile(el);
+        this.renderDiagnostics(el);
+        return;
+      case "guide":
+        this.renderGuide(el);
+        return;
+      default:
+        this.renderConnection(el);
+        this.renderPromptTest(el);
+    }
   }
 
   // --- version label --------------------------------------------------------
@@ -204,7 +254,7 @@ export class HermesSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Profile prefix")
       .setClass("hermes-wide")
-      .setDesc("Only when the Hermes gateway serves several profiles (gateway.multiplex_profiles). Requests then go to /p/<profile>/v1. Leave empty for the default profile.")
+      .setDesc("Only when the Hermes gateway serves several profiles (gateway.multiplex_profiles). Requests then go to /p/<profile>/v1 — and they authenticate with THAT profile's own API_SERVER_KEY, a separate key created for it (never another profile's). Leave empty for the default profile.")
       .addText((text) =>
         text
           .setPlaceholder("default")
@@ -241,7 +291,7 @@ export class HermesSettingTab extends PluginSettingTab {
     const keySetting = new Setting(containerEl)
       .setName("API key")
       .setClass("hermes-wide")
-      .setDesc("Must equal API_SERVER_KEY in the Hermes .env. Stored in this vault's plugin data, so keep the vault private.")
+      .setDesc("Must equal API_SERVER_KEY in the .env of the profile you are talking to — its own key, created for it (use the ⟳ button to make one). Stored in this vault's plugin data, so keep the vault private.")
       .addText((text) => {
         text.inputEl.type = "password";
         text.inputEl.autocomplete = "off";
@@ -262,6 +312,25 @@ export class HermesSettingTab extends PluginSettingTab {
         .onClick(() => {
           const input = keySetting.controlEl.querySelector("input");
           if (input) input.type = input.type === "password" ? "text" : "password";
+        })
+    );
+    keySetting.addExtraButton((button) =>
+      button
+        .setIcon("refresh-cw")
+        .setTooltip("Generate a new 48-character key and copy the .env line")
+        .onClick(() => {
+          const generated = randomApiKey();
+          this.plugin.settings.apiKey = generated;
+          this.plugin.settings.connection = null;
+          void this.plugin.saveSettings();
+          const target = apiKeyEnvTarget(this.plugin.settings.profile);
+          copyText("API_SERVER_KEY=" + generated, "Copied — now paste that line into " + target + " and restart the gateway there.");
+          const input = keySetting.controlEl.querySelector("input");
+          if (input) {
+            input.value = generated;
+            input.type = "text";
+          }
+          paintKeyAdvice();
         })
     );
 
@@ -879,6 +948,9 @@ export class HermesSettingTab extends PluginSettingTab {
     );
     const profileNotes = steps.createEl("ul", { cls: "hermes-guide-list" });
     profileNotes.createEl("li", {
+      text: "Make a SEPARATE key for this profile. A URL-selected profile (/p/<name>) authenticates with its own API_SERVER_KEY and nothing else — reusing the default profile's key, or a key from another profile, always answers 401. Press the ⟳ button beside the API key field above (it generates 48 characters and copies the whole API_SERVER_KEY=… line), paste that line into ~/.hermes/profiles/<name>/.env, restart the gateway, and keep the same value in the field here. It must be at least 16 characters.",
+    });
+    profileNotes.createEl("li", {
       text: "Create the profile on the Hermes host first — the plugin only sends requests, so it cannot create one or check for one. Until it exists and its API server is listening you will see 404 (wrong port or prefix) or 401 (a key from another profile). No shell handy? hermes dashboard → Profiles does it, and you can start on your default profile today and switch later.",
     });
     profileNotes.createEl("li", {
@@ -957,8 +1029,6 @@ export class HermesSettingTab extends PluginSettingTab {
         ? "Last automatic backup this session: " + new Date(this.plugin.lastBackupAt).toLocaleTimeString()
         : "No automatic backup written yet in this session.",
     });
-
-    this.renderDiagnostics(containerEl);
   }
 
   /** Where to look when something failed — the only place on a phone. */
@@ -981,10 +1051,9 @@ export class HermesSettingTab extends PluginSettingTab {
         })
       );
 
-    this.renderLibrary(containerEl);
   }
 
-  /** Quick prompts, saved connections and the follow-edits switch. */
+  /** Quick prompts, saved setup and the follow-edits switch. */
   private renderLibrary(containerEl: HTMLElement): void {
     new Setting(containerEl).setName("Quick prompts").setHeading();
     const prompts = this.plugin.settings.quickPrompts;

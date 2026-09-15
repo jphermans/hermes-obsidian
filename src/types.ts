@@ -96,6 +96,8 @@ export interface HermesAgentNotesSettings {
   profiles: ConnectionProfile[];
   /** After an approved edit, open the note where the change is. */
   trackEdits: boolean;
+  /** Which setup-page tab was open last, so reopening lands in the same place. */
+  settingsTab: string;
   includeActiveNote: boolean;
   maxHistoryMessages: number;
 
@@ -139,6 +141,7 @@ export const DEFAULT_SETTINGS: HermesAgentNotesSettings = {
   quickPrompts: defaultQuickPrompts(),
   profiles: [],
   trackEdits: true,
+  settingsTab: "connection",
   includeActiveNote: true,
   maxHistoryMessages: 12,
 

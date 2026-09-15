@@ -549,6 +549,25 @@ test("a prefixed profile warns before a short key can 401", () => {
   assert.equal(hermes.MIN_PROFILED_KEY_LENGTH, 16);
 });
 
+test("a generated key clears the profile floor, and knows where it belongs", () => {
+  assert.equal(hermes.apiKeyEnvTarget(""), "~/.hermes/.env");
+  assert.equal(hermes.apiKeyEnvTarget("default"), "~/.hermes/.env");
+  assert.equal(hermes.apiKeyEnvTarget("obsidian"), "~/.hermes/profiles/obsidian/.env");
+  assert.equal(hermes.apiKeyEnvTarget("  obsidian  "), "~/.hermes/profiles/obsidian/.env");
+
+  const key = hermes.randomApiKey();
+  assert.equal(key.length, 48, key.length + " characters");
+  assert.ok(/^[0-9a-f]+$/.test(key), "hex only: " + key);
+  assert.ok(key.length >= hermes.MIN_PROFILED_KEY_LENGTH);
+  assert.equal(hermes.apiKeyAdvice("obsidian", key), null, "a generated key must satisfy the prefix warning");
+  assert.notEqual(hermes.randomApiKey(), hermes.randomApiKey(), "two keys must differ");
+
+  // Deterministic source: floor(0.5 × 256) = 128 = 0x80.
+  assert.equal(hermes.randomApiKey(16, () => 0.5), "80".repeat(16));
+  assert.equal(hermes.randomApiKey(16, () => 0.5).length, 32);
+  assert.equal(hermes.randomApiKey(4, () => 0.5).length, 32, "never below the 16-byte floor");
+});
+
 test("presetFor falls back to local for an unknown mode", () => {
   assert.equal(hermes.presetFor("nonsense").id, "local");
   assert.equal(hermes.presetFor(undefined).id, "local");

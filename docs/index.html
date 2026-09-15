@@ -167,7 +167,7 @@
 <body>
 <header class="top">
   <div class="top-inner">
-    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.30</span> <small>complete setup guide</small></span>
+    <span class="brand">Hermes Agent Notes <span class="badge">v0.1.31</span> <small>complete setup guide</small></span>
     <span class="top-actions">
       <a class="ghost" style="padding:7px 11px;border:1px solid var(--border);border-radius:8px" href="https://github.com/jphermans/hermes-obsidian">Repository</a>
       <button class="ghost" id="theme">Theme</button>
@@ -897,6 +897,9 @@ hermes.example.com {
 └── state.db        # every prompt and answer that came from the vault</code></pre>
     <pre><code>hermes profile create obsidian      # creates the profile + an `obsidian` command
 obsidian setup                      # its own model and provider keys</code></pre>
+    <div class="card warn">
+      <p style="margin:0"><b>Make a separate key for this profile — never reuse another profile's.</b> A URL-selected profile authenticates with its <i>own</i> <code>API_SERVER_KEY</code> and nothing else, so the default profile's key (or any other profile's) always answers <b>401</b>. Generate one with <code>openssl rand -hex 24</code> — 48 characters, and at least <b>16</b> or the multiplex path rejects it as unusable — put it in the profile's own <code>.env</code> below, restart the multiplexer, and paste the same value into the plugin.</p>
+    </div>
     <p>Enable its API server in <b>that profile's</b> <code>.env</code>:</p>
     <pre><code>API_SERVER_ENABLED=true
 API_SERVER_KEY=my-vault-key

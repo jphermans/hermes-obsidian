@@ -564,6 +564,64 @@ await test("one setup can be saved, and saving again replaces it", async () => {
   assert.equal(plugin.settings.profiles.length, 0);
 });
 
+// --- the setup page is tabbed ------------------------------------------------
+
+function textOf(element) {
+  const parts = [String(element.textContent || "")];
+  for (const child of element.children || []) parts.push(textOf(child));
+  return parts.join("\n");
+}
+
+function findByClass(element, className) {
+  if (element.className === className) return element;
+  for (const child of element.children || []) {
+    const hit = findByClass(child, className);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+await test("the setup page shows one tab at a time and reopens where you left it", async () => {
+  const plugin = await makePlugin();
+  const tab = new hermes.HermesSettingTab(app, plugin);
+
+  plugin.settings.settingsTab = "connection";
+  tab.display();
+  const connection = textOf(tab.containerEl);
+  assert.ok(connection.includes("Hermes connection"), "the connection tab renders");
+  // The guide's first step must not be on screen — one tab at a time.
+  assert.ok(!connection.includes("Enable the API server on the Hermes host"), "the guide is not rendered too");
+  assert.ok(!connection.includes("How do you reach Hermes?"), "nor is the remote-access tab");
+
+  const strip = findByClass(tab.containerEl, "hermes-tabs");
+  assert.ok(strip, "there is a tab strip");
+  assert.deepEqual(
+    strip.children.map((child) => child.textContent),
+    ["Connection", "Remote access", "Notes", "Chat & prompts", "Backup & errors", "Setup guide"],
+    "the strip lists every tab, in order"
+  );
+
+  // The persisted tab is honoured on reopen.
+  plugin.settings.settingsTab = "guide";
+  tab.display();
+  const guide = textOf(tab.containerEl);
+  assert.ok(guide.includes("Enable the API server on the Hermes host"), "the guide tab renders");
+  assert.ok(!guide.includes("Hermes connection"), "the connection tab is gone while it is not selected");
+
+  // An unknown stored value falls back instead of rendering an empty page.
+  plugin.settings.settingsTab = "nonsense";
+  tab.display();
+  assert.ok(textOf(tab.containerEl).includes("Hermes connection"), "an unknown tab falls back to Connection");
+
+  // Every tab renders content, and no tab is empty.
+  for (const id of ["connection", "remote", "notes", "chat", "backup", "guide"]) {
+    plugin.settings.settingsTab = id;
+    tab.display();
+    const body = findByClass(tab.containerEl, "hermes-tab-body");
+    assert.ok(body && body.children.length > 0, "the " + id + " tab rendered nothing");
+  }
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");
