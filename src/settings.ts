@@ -92,7 +92,7 @@ export class HermesSettingTab extends PluginSettingTab {
     });
 
     const body = containerEl.createDiv({ cls: "hermes-tab-body" });
-    this.renderTab(active, body);
+    this.renderActiveTab(active, body);
   }
 
   /**
@@ -118,8 +118,15 @@ export class HermesSettingTab extends PluginSettingTab {
     }
   }
 
-  /** One tab's content. Only the visible tab is built, so the page stays cheap. */
-  private renderTab(id: string, el: HTMLElement): void {
+  /**
+   * One tab's content. Only the visible tab is built, so the page stays cheap.
+   *
+   * NOT named renderTab(): Obsidian 1.13 added renderTab() to the SettingTab base class
+   * and calls it when the pane opens. A member with that name shadows it — Obsidian then
+   * calls ours with no arguments, display() never runs, and the pane comes up blank with
+   * no error anywhere. It is not in the public typings, so nothing warns about it.
+   */
+  private renderActiveTab(id: string, el: HTMLElement): void {
     switch (id) {
       case "remote":
         this.guard(el, "Remote access", () => this.renderRemoteAccess(el));

@@ -622,6 +622,19 @@ await test("the setup page shows one tab at a time and reopens where you left it
   }
 });
 
+await test("Obsidian 1.13 opens the tab through renderTab(), which must not be shadowed", async () => {
+  const plugin = await makePlugin();
+  const tab = new hermes.HermesSettingTab(app, plugin);
+  assert.ok(
+    !Object.prototype.hasOwnProperty.call(hermes.HermesSettingTab.prototype, "renderTab"),
+    "renderTab() must stay Obsidian's — 1.13 calls it to open the pane"
+  );
+  tab.renderTab();
+  const text = textOf(tab.containerEl);
+  assert.ok(text.includes("Hermes connection"), "the pane renders when Obsidian opens it this way");
+  assert.ok(text.includes("Setup guide"), "including the tab row");
+});
+
 // --- the page cannot be blanked by one failing section --------------------
 await test("a section that throws names itself instead of blanking the setup page", async () => {
   const plugin = await makePlugin();

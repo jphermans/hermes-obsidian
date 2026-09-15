@@ -568,6 +568,24 @@ test("a generated key clears the profile floor, and knows where it belongs", () 
   assert.equal(hermes.randomApiKey(4, () => 0.5).length, 32, "never below the 16-byte floor");
 });
 
+test("the settings tab shadows no base-class member (the Obsidian 1.13 trap)", () => {
+  const dts = readFileSync("node_modules/obsidian/obsidian.d.ts", "utf8");
+  const start = dts.indexOf("export abstract class SettingTab {");
+  assert.ok(start > 0, "the SettingTab typings were found");
+  const body = dts.slice(start, dts.indexOf("\n}", start));
+  const declared = [...body.matchAll(/^\s{4}([A-Za-z_][A-Za-z0-9_]*)\s*[(:]/gm)].map((match) => match[1]);
+  assert.ok(declared.includes("settingItems"), "the base-class members were parsed");
+
+  // These exist on Obsidian 1.13's base class at RUNTIME but are absent from the public
+  // typings, so tsc cannot warn about them. renderTab() is the entry point Obsidian calls
+  // when the pane opens: shadowing it silently renders nothing at all.
+  const runtimeOnly = ["renderTab", "renderedItems", "settings", "getElementForDefinition", "getDefinitionForElement"];
+  const allowed = new Set(["display", "plugin"]); // display() is the documented override
+  const own = Object.getOwnPropertyNames(hermes.HermesSettingTab.prototype).filter((name) => name !== "constructor");
+  const clashes = [...declared, ...runtimeOnly].filter((name) => own.includes(name) && !allowed.has(name));
+  assert.deepEqual(clashes, [], "shadowed base members: " + clashes.join(", "));
+});
+
 test("presetFor falls back to local for an unknown mode", () => {
   assert.equal(hermes.presetFor("nonsense").id, "local");
   assert.equal(hermes.presetFor(undefined).id, "local");

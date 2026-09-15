@@ -353,6 +353,14 @@ export class PluginSettingTab {
     this.plugin = plugin;
     this.containerEl = makeEl();
   }
+  /**
+   * Obsidian 1.13 made this the entry point when a settings tab opens: it renders the
+   * declarative definitions, or falls back to display(). Deliberately present in the stub
+   * so a subclass that shadows it fails the tests the way it fails in the real app.
+   */
+  renderTab() {
+    this.display();
+  }
   display() {}
 }
 
