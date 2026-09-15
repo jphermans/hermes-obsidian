@@ -6,6 +6,7 @@
 
 import { App, TFile, normalizePath } from "obsidian";
 import { serializeProperties } from "./properties";
+import type { KnownPropertyTypes } from "./properties";
 import { splitFrontmatter } from "./vault-rules";
 import type { FilenameStyle } from "./types";
 
@@ -410,13 +411,17 @@ export function titleFromNote(content: string, fallback: string): string {
   return "Untitled note";
 }
 
-export function serializeNote(frontmatter: Record<string, unknown> | null, body: string): string {
+export function serializeNote(
+  frontmatter: Record<string, unknown> | null,
+  body: string,
+  knownTypes: KnownPropertyTypes = {}
+): string {
   const cleanBody = body.replace(/^[\n]+/, "").replace(/[\n]+$/, "") + "\n";
   if (!frontmatter || Object.keys(frontmatter).length === 0) return cleanBody;
   // serializeProperties, not stringifyYaml: it emits dates unquoted (quoted dates are Text
   // properties, not Dates), keeps booleans bare, makes list-shaped keys lists, and drops
   // property names Obsidian cannot store.
-  const { text: yaml } = serializeProperties(frontmatter);
+  const { text: yaml } = serializeProperties(frontmatter, knownTypes);
   if (!yaml.trim()) return cleanBody;
   return ["---", yaml, "---", "", cleanBody].join("\n");
 }

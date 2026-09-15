@@ -8,7 +8,7 @@
  */
 
 import { App, parseYaml } from "obsidian";
-import { isDateOnly, reviveProperties, todayLocal } from "./properties";
+import { isDateOnly, recoverFrontmatter, reviveProperties, todayLocal } from "./properties";
 import type { FrontmatterKeyInfo, VaultConventions } from "./types";
 
 export interface FrontmatterSplit {
@@ -18,6 +18,11 @@ export interface FrontmatterSplit {
   /** Everything after the closing fence. */
   body: string;
   present: boolean;
+  /**
+   * Set when the block did not parse as YAML and the properties were read line by line
+   * instead — so they survive an edit that would otherwise write the note without them.
+   */
+  recovered?: { keys: number; skipped: string[] };
 }
 
 function stripBom(text: string): string {
@@ -53,7 +58,21 @@ export function splitFrontmatter(input: string): FrontmatterSplit {
   } catch {
     data = null;
   }
-  if (!data) return { data: null, raw, body: normalised, present: false };
+  if (!data) {
+    // The block is there but does not parse. Obsidian would show no properties at all, so
+    // recover them line by line rather than read-then-write the note without them.
+    const recovery = recoverFrontmatter(raw);
+    if (recovery) {
+      return {
+        data: reviveProperties(recovery.data),
+        raw,
+        body,
+        present: true,
+        recovered: { keys: Object.keys(recovery.data).length, skipped: recovery.skipped },
+      };
+    }
+    return { data: null, raw, body: normalised, present: false };
+  }
   return { data, raw, body, present: true };
 }
 

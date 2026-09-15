@@ -6,7 +6,14 @@
  * file-name characters.
  */
 
-import { checkProperties, checkPropertyText, describePropertyIssue, normalizeProperties } from "./properties";
+import {
+  checkProperties,
+  checkPropertyText,
+  describePropertyIssue,
+  normalizeProperties,
+  vaultTypeIssues,
+  vaultTypeMap,
+} from "./properties";
 import type { PropertyIssue } from "./properties";
 import { countOccurrences, headingLevel, splitFrontmatter } from "./vault-rules";
 import { isBadFilenameChar } from "./note-writer";
@@ -135,18 +142,37 @@ export function validateNote(content: string, filename: string, conventions: Vau
   for (const issue of checkPropertyText(split.raw)) {
     issues.push({ level: issue.level === "info" ? "info" : "warn", message: describePropertyIssue(issue) });
   }
-  if (looksUnparsed(looksLikeFrontmatter, split.present)) {
+  if (split.recovered) {
+    // Recovered line by line: Obsidian shows nothing for a block it cannot parse, and the
+    // note is rewritten as valid YAML, so say what was kept and what could not be read —
+    // then keep checking every recovered property below.
+    issues.push({
+      level: "warn",
+      message:
+        "The property block does not parse as YAML" +
+        (split.recovered.skipped.length > 0 ? " (“" + split.recovered.skipped.join("”, “") + "” cannot be read)" : "") +
+        " — Obsidian would show no properties at all. " +
+        split.recovered.keys +
+        " propert" + (split.recovered.keys === 1 ? "y was" : "ies were") +
+        " recovered and will be written back as valid YAML.",
+    });
+  } else if (looksUnparsed(looksLikeFrontmatter, split.present)) {
     issues.push({
       level: "warn",
       message: "The frontmatter block does not parse as YAML — Obsidian would show it as plain text.",
     });
-  } else if (split.present && split.data) {
+  }
+  if (split.present && split.data) {
     const keys = Object.keys(split.data);
     issues.push({ level: "ok", message: "Properties present and parseable: " + (keys.length > 0 ? keys.join(", ") : "none") });
     for (const issue of checkProperties(split.data)) {
       issues.push({ level: issue.level === "info" ? "info" : "warn", message: describePropertyIssue(issue) });
     }
-    const fixes = normalizeProperties(split.data).fixes;
+    // The vault's own type for each name wins in Obsidian's properties panel.
+    for (const issue of vaultTypeIssues(split.data, conventions)) {
+      issues.push({ level: issue.level === "info" ? "info" : "warn", message: describePropertyIssue(issue) });
+    }
+    const fixes = normalizeProperties(split.data, vaultTypeMap(conventions)).fixes;
     if (fixes.length > 0) {
       issues.push({ level: "info", message: "Corrected when saved: " + fixes.join("; ") + "." });
     }

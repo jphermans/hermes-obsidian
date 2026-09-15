@@ -1644,7 +1644,9 @@ test("properties Obsidian cannot store are reported and corrected", () => {
   const fixed = hermes.normalizeProperties({ "word count": 12, tags: "a, b", tagsx: ["#a", "#a"], meta: { a: 1 }, "": "x" });
   assert.equal(fixed.data["word-count"], 12, "the name is repaired");
   assert.deepEqual(fixed.data.tags, ["a", "b"], "the comma string becomes a list");
-  assert.deepEqual(fixed.data.tagsx, ["a"], "tags lose the # and duplicates");
+  // Only the `tags` property is a Tags property — `tagsx` is a list like any other, so its
+  // values are left exactly as written.
+  assert.deepEqual(fixed.data.tagsx, ["#a"], "a similarly-named key keeps its values");
   assert.equal("meta" in fixed.data, false, "the object property is dropped rather than stored wrong");
   assert.equal(fixed.data[""], undefined, "an empty name is dropped");
   assert.ok(fixed.fixes.length >= 3, "every repair is reported: " + fixed.fixes.join("; "));
@@ -1683,6 +1685,164 @@ test("the setup tabs and the preview modal's tabs keep separate class names", ()
   assert.equal(count(".hermes-setup-tab"), 2, "the setup tab is defined once, plus the mobile rule");
   assert.equal(count(".hermes-setup-tabs"), 2);
   assert.equal(count(".hermes-setup-tab.is-active"), 1);
+});
+
+test("the documented property formats are exactly what the plugin writes", () => {
+  // Examples taken from help.obsidian.md/properties.
+  assert.equal(hermes.serializeProperties({ date: "2020-08-21" }).text, "date: 2020-08-21", "Date, unquoted");
+  assert.equal(hermes.serializeProperties({ time: "2020-08-21T10:30:00" }).text, "time: 2020-08-21T10:30:00", "Date & time with seconds");
+  assert.equal(hermes.serializeProperties({ year: 1977, pie: 3.14 }).text, "year: 1977\npie: 3.14", "Numbers are literal and unquoted");
+  assert.equal(hermes.serializeProperties({ favorite: true, reply: false }).text, "favorite: true\nreply: false", "Checkboxes are bare");
+  assert.equal(
+    hermes.serializeProperties({ links: ["[[Link]]", "[[Link2]]"] }).text,
+    "links:\n  - '[[Link]]'\n  - '[[Link2]]'",
+    "internal links in a list are quoted"
+  );
+  assert.equal(
+    hermes.serializeProperties({ cast: ["Mark Hamill", "Harrison Ford"] }).text,
+    "cast:\n  - Mark Hamill\n  - Harrison Ford",
+    "a list is one - value per line"
+  );
+  assert.equal(hermes.serializeProperties({ url: "https://www.example.com" }).text, "url: https://www.example.com", "a URL needs no quotes");
+  assert.equal(hermes.serializeProperties({ link: "[[Episode IV]]" }).text, "link: '[[Episode IV]]'", "a link property is quoted");
+
+  // A Date & time that came through the parser keeps its seconds: YYYY-MM-DDTHH:MM:SS.
+  assert.equal(hermes.yamlDateToString(new Date(Date.UTC(2020, 7, 21, 10, 30, 0))), "2020-08-21T10:30:00");
+  const roundTrip = hermes.splitFrontmatter("---\ntime: 2020-08-21T10:30:00\n---\n\nbody\n");
+  assert.equal(hermes.serializeNote(roundTrip.data, "body"), "---\ntime: 2020-08-21T10:30:00\n---\n\nbody\n");
+});
+
+test("the deprecated property names are renamed, and List properties stay lists", () => {
+  assert.deepEqual(hermes.DEPRECATED_KEYS, { tag: "tags", alias: "aliases", cssclass: "cssclasses" });
+
+  const merged = hermes.normalizeProperties({ alias: ["One"], aliases: ["Two"] });
+  assert.deepEqual(merged.data.aliases, ["One", "Two"], "a deprecated key merges into the modern one");
+  assert.equal("alias" in merged.data, false, "and its own key is gone");
+
+  // tags, aliases and cssclasses are List properties, so a bare value is a list of one.
+  assert.deepEqual(hermes.normalizeProperties({ cssclass: "wide" }).data.cssclasses, ["wide"]);
+  assert.deepEqual(hermes.normalizeProperties({ tag: "project" }).data.tags, ["project"]);
+  assert.deepEqual(hermes.normalizeProperties({ aliases: "My only alias" }).data.aliases, ["My only alias"]);
+  assert.ok(
+    hermes.normalizeProperties({ aliases: "My only alias" }).fixes.join(" ").indexOf("into a list") >= 0,
+    "converting a Text property to a List is reported"
+  );
+  // The Tags type belongs to `tags` alone.
+  assert.deepEqual(hermes.normalizeProperties({ vintage: ["#keep"] }).data.vintage, ["#keep"]);
+  assert.ok(hermes.normalizeProperties({ tags: ["#project"] }).data.tags.indexOf("project") >= 0, "tags lose the #");
+});
+
+test("the checker reports what the documentation forbids", () => {
+  const messages = (data) => hermes.checkProperties(data).map((issue) => hermes.describePropertyIssue(issue)).join(" | ");
+
+  // Tags: no spaces, no commas, at least one non-numeric character.
+  const tags = messages({ tags: ["two words", "1984", "a, b"] });
+  assert.ok(tags.indexOf("splits on") >= 0, "a space in a tag is flagged: " + tags);
+  assert.ok(tags.indexOf("non-numeric") >= 0, "an all-digit tag is flagged");
+  assert.ok(tags.indexOf("comma") >= 0, "a comma inside a tag is flagged");
+
+  // Deprecated names.
+  assert.ok(messages({ tag: ["x"] }).indexOf("deprecated in Obsidian 1.4") >= 0);
+  assert.ok(messages({ cssclass: ["x"] }).indexOf("use “cssclasses”") >= 0);
+
+  // Date & time must carry seconds; a hashtag in a Text property is not a tag.
+  assert.ok(messages({ t: "2020-08-21T10:30" }).indexOf("YYYY-MM-DDTHH:MM:SS") >= 0);
+  assert.ok(messages({ note: "see #home" }).indexOf("only text") >= 0);
+  assert.equal(messages({ tags: ["journal"] }), "", "a correct tags list says nothing");
+
+  // "Property names are separated from their values by a colon followed by a space."
+  assert.ok(
+    hermes.checkPropertyText("tags:[a, b]").map((issue) => issue.message).join(" ").indexOf("with the space after the colon") >= 0,
+    "a missing space after the colon is flagged"
+  );
+  assert.equal(
+    hermes.checkPropertyText("tags: [a, b]").length,
+    0,
+    "the documented spacing is silent"
+  );
+});
+
+test("a property name keeps one type across the vault", () => {
+  const conventions = {
+    keys: [
+      { key: "status", count: 41, types: ["text"], samples: [] },
+      { key: "year", count: 12, types: ["number"], samples: [] },
+      { key: "tags", count: 30, types: ["list"], samples: [] },
+    ],
+  };
+  const mismatch = hermes.vaultTypeIssues({ status: ["active"], year: "1977" }, conventions).map((issue) => issue.message).join(" | ");
+  assert.ok(mismatch.indexOf("“status”") >= 0 && mismatch.indexOf("text") >= 0, "a list where the vault has text: " + mismatch);
+  assert.ok(mismatch.indexOf("“year”") >= 0 && mismatch.indexOf("number") >= 0, "a quoted number where the vault has a number");
+
+  // Matching values, unknown names and empty values are not reported.
+  assert.deepEqual(hermes.vaultTypeIssues({ tags: ["a"] }, conventions), []);
+  assert.deepEqual(hermes.vaultTypeIssues({ invented: "x" }, conventions), []);
+  assert.deepEqual(hermes.vaultTypeIssues({ status: null }, conventions), []);
+  assert.deepEqual(hermes.vaultTypeIssues({ year: 1977 }, conventions), []);
+  assert.deepEqual(hermes.vaultTypeIssues(null, conventions), []);
+
+  // The writer honours the vault's type, so the note lands with the type the panel expects.
+  const map = hermes.vaultTypeMap(conventions);
+  assert.deepEqual(map, { status: "text", year: "number", tags: "list" });
+  assert.equal(hermes.serializeProperties({ year: "1977" }, map).text, "year: 1977", "a numeric string becomes a number");
+  assert.ok(hermes.normalizeProperties({ year: "1977" }, map).fixes.join(" ").indexOf("made “year” a number") >= 0, "and says so");
+  assert.equal(hermes.serializeProperties({ cast: "Mark Hamill" }, { cast: "list" }).text, "cast:\n  - Mark Hamill", "a name the vault lists becomes a list");
+  assert.equal(hermes.serializeProperties({ title: "Kitchen" }, map).text, "title: Kitchen", "a text name is left alone");
+  assert.equal(hermes.serializeProperties({ year: "not a year" }, map).text, "year: not a year", "a non-numeric value is not forced into a number");
+
+  // It reaches the note preview, which gets the vault conventions.
+  const report = hermes.validateNote("---\nyear: \"1977\"\n---\n\n# Title\n", "Title", conventions);
+  assert.ok(
+    report.issues.map((issue) => issue.message).join(" | ").indexOf("“year”") >= 0,
+    "the preview warns that the vault uses year as a number"
+  );
+});
+
+test("one malformed line cannot drop every property in the note", () => {
+  // `cssclass:wide` without the space makes the whole YAML block a plain scalar, so Obsidian
+  // shows no properties — and reading then writing the note would have lost all of them.
+  // Without the space, `cssclass:wide` is a YAML *continuation* of the previous value: the
+  // scalar runs on until the next real mapping entry, which then makes the block unparseable
+  // and would have taken every property with it.
+  const note = ["---", "title: Kitchen notes", "cssclass:wide", "tags:", "  - project", "---", "", "# Kitchen notes", ""].join("\n");
+  const split = hermes.splitFrontmatter(note);
+  assert.ok(split.recovered, "the block is reported as recovered: " + JSON.stringify(split.recovered));
+  assert.equal(split.recovered.keys, 3, "every property was recovered");
+  assert.deepEqual(split.recovered.skipped, [], "including the one written without the space");
+  assert.equal(split.data.title, "Kitchen notes", "and the value is not the swallowed multi-line scalar");
+  assert.deepEqual(split.data.tags, ["project"], "lists survive too");
+
+  const report = hermes.validateNote(note, "Kitchen notes", null);
+  const text = report.issues.map((issue) => issue.message).join(" | ");
+  assert.ok(text.indexOf("will be written back as valid YAML") >= 0, "the preview explains the recovery: " + text);
+  // Recovering does not skip the property rules.
+  const recoveredReport = hermes.validateNote(
+    ["---", "title: a", "cssclass:wide", "due: 2020-08-21T10:30", "publish: \"true\"", "---", "", "body", ""].join("\n"),
+    "a",
+    null
+  );
+  const recoveredText = recoveredReport.issues.map((issue) => issue.message).join(" | ");
+  assert.ok(recoveredText.indexOf("YYYY-MM-DDTHH:MM:SS") >= 0, "a recovered date & time is still checked: " + recoveredText);
+  assert.ok(recoveredText.indexOf("checkbox") >= 0, "and so is a quoted boolean");
+
+  // A rescue must respect quoting: "1977" is text, 1977 is a number.
+  const quoted = hermes.recoverFrontmatter('year: "1977"\nreal: 1977\nflag: "true"\nbare: true');
+  assert.equal(quoted.data.year, "1977", "a quoted number stays text");
+  assert.equal(quoted.data.real, 1977, "an unquoted number is a number");
+  assert.equal(quoted.data.flag, "true", "a quoted boolean stays text");
+  assert.equal(quoted.data.bare, true, "an unquoted boolean is a checkbox");
+
+  const written = hermes.serializeNote(split.data, "# Kitchen notes\n");
+  assert.ok(written.indexOf("title: Kitchen notes") >= 0, "the note keeps its title");
+  assert.ok(written.indexOf("tags:") >= 0 && written.indexOf("- project") >= 0, "and its tags");
+  const after = hermes.splitFrontmatter(written).data;
+  assert.equal("cssclass" in after, false, "the deprecated key is gone: " + JSON.stringify(after));
+  assert.deepEqual(after.cssclasses, ["wide"], "and arrived under its modern name as a list");
+
+  // A block that cannot be read at all still reports rather than inventing properties.
+  const hopeless = hermes.splitFrontmatter("---\njust a sentence\n---\n\nbody\n");
+  assert.equal(hopeless.present, false, "no properties can be recovered from prose");
+  assert.equal(hopeless.recovered, undefined);
 });
 
 console.log("selftest: " + passed + " passed, " + failed + " failed");

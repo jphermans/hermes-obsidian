@@ -1,5 +1,20 @@
 /**
- * Obsidian property (frontmatter) rules.
+ * Obsidian property (frontmatter) rules, following the official documentation
+ * (help.obsidian.md/properties, /tags and /aliases):
+ *
+ *  - one YAML block at the very top, between `---` lines, `name: value` with a space
+ *    after the colon, each name used once;
+ *  - the types are Text, List, Number, Checkbox, Date, Date & time and Tags, and a
+ *    property's type belongs to its NAME across the whole vault — every note with that
+ *    name uses that type;
+ *  - a List is one `- value` per line, with internal links quoted;
+ *  - Tags are a type used exclusively by the `tags` property, always written as a list,
+ *    without `#`, and every tag needs at least one non-numeric character;
+ *  - dates are `YYYY-MM-DD`, dates with times are `YYYY-MM-DDTHH:MM:SS`;
+ *  - nested properties are unsupported, and `tag`/`alias`/`cssclass` were deprecated in
+ *    1.4 with their support dropped in 1.9.
+ *
+ * It also guards two traps in the round trip through js-yaml:
  *
  * Obsidian's own parser is YAML, but it only recognises a fixed set of *shapes*:
  * text, list, number, checkbox, date and datetime. Everything else it renders as
@@ -15,6 +30,7 @@
  */
 
 import { parseYaml, stringifyYaml } from "obsidian";
+import type { VaultConventions } from "./types";
 
 export interface PropertyIssue {
   level: "warn" | "info";
@@ -29,8 +45,27 @@ export const PROPERTY_KEY_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_-]*$/;
 /** Keys Obsidian treats as lists; a comma string here is a common mistake. */
 export const LIST_PROPERTY_KEYS = ["tags", "tag", "aliases", "alias", "cssclasses"];
 
+/**
+ * The Tags *type* is exclusive to the `tags` property — it cannot be assigned to another
+ * name ("Tags properties are a special property type used exclusively by the tags
+ * property"). `tag` is its deprecated spelling, so it gets the tag hygiene too.
+ */
+export const TAG_KEYS = ["tag", "tags"];
+
+/** Deprecated in Obsidian 1.4, support as default properties dropped in 1.9. */
+export const DEPRECATED_KEYS: Record<string, string> = {
+  tag: "tags",
+  alias: "aliases",
+  cssclass: "cssclasses",
+};
+
 export const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+/** Accepted when reading; the documented *stored* form includes seconds. */
 export const DATE_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/;
+/** What Obsidian writes: `time: 2020-08-21T10:30:00`. */
+export const DATE_TIME_CANONICAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+/** A tag needs at least one non-numeric character: `#1984` is not a valid tag. */
+export const NUMERIC_ONLY_TAG = /^\d+$/;
 export const NUMERIC_TEXT = /^-?\d+(\.\d+)?$/;
 const DASHED_DATE = /^\d{1,2}[/.]\d{1,2}[/.]\d{2,4}$/;
 const WRITTEN_DATE = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(st|nd|rd|th)?,?\s+\d{4}$/i;
@@ -88,7 +123,8 @@ export function yamlDateToString(date: Date): string {
   const seconds = useUtc ? date.getUTCSeconds() : date.getSeconds();
   const day = year + "-" + pad(month) + "-" + pad(dayOfMonth);
   if (hours === 0 && minutes === 0 && seconds === 0) return day;
-  return day + "T" + pad(hours) + ":" + pad(minutes) + (seconds > 0 ? ":" + pad(seconds) : "");
+  // Obsidian stores a Date & time as YYYY-MM-DDTHH:MM:SS, seconds included.
+  return day + "T" + pad(hours) + ":" + pad(minutes) + ":" + pad(seconds);
 }
 
 /** Dates from the YAML parser become strings, so nothing re-serialises as an ISO stamp. */
@@ -130,6 +166,77 @@ export function propertyKind(value: unknown): PropertyKind {
   return "unsupported";
 }
 
+function stripQuotes(text: string): string {
+  const value = text.trim();
+  if (value.length >= 2) {
+    const first = value.charAt(0);
+    const last = value.charAt(value.length - 1);
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) return value.slice(1, -1);
+  }
+  return value;
+}
+
+/**
+ * A recovered scalar, typed the way YAML would have typed it — including the rule that
+ * quoting makes it text: `"1977"` stays a string while `1977` is a number.
+ */
+function coerceScalar(text: string): unknown {
+  const raw = text.trim();
+  if (raw.length >= 2) {
+    const first = raw.charAt(0);
+    const last = raw.charAt(raw.length - 1);
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) return raw.slice(1, -1);
+  }
+  if (/^(true|false)$/i.test(raw)) return raw.toLowerCase() === "true";
+  if (/^-?\d+$/.test(raw)) return parseInt(raw, 10);
+  if (/^-?\d+\.\d+$/.test(raw)) return parseFloat(raw);
+  return raw;
+}
+
+export interface FrontmatterRecovery {
+  data: Record<string, unknown>;
+  /** Lines that could not be read as a property at all. */
+  skipped: string[];
+}
+
+/**
+ * A block that fails to parse means Obsidian shows *no* properties, and a naive
+ * read-then-write would drop every one of them. Read it line by line instead, so a single
+ * malformed line cannot take the rest down with it: `name: value` with or without the space
+ * after the colon, and `- item` lines belonging to the key above them.
+ */
+export function recoverFrontmatter(raw: string): FrontmatterRecovery | null {
+  const data: Record<string, unknown> = {};
+  const skipped: string[] = [];
+  let lastKey: string | null = null;
+  let items: unknown[] | null = null;
+  for (const line of (raw || "").split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.charAt(0) === "#") continue;
+    const item = /^-\s+(.*)$/.exec(trimmed);
+    if (item && lastKey) {
+      if (!items) {
+        items = [];
+        data[lastKey] = items;
+      }
+      items.push(coerceScalar(item[1].trim()));
+      continue;
+    }
+    const match = /^([A-Za-z0-9_][A-Za-z0-9_-]*)\s*:\s*(.*)$/.exec(trimmed);
+    if (!match) {
+      skipped.push(trimmed.slice(0, 60));
+      lastKey = null;
+      items = null;
+      continue;
+    }
+    lastKey = match[1];
+    items = null;
+    data[lastKey] = match[2].trim() === "" ? null : coerceScalar(match[2]);
+  }
+  if (Object.keys(data).length === 0) return null;
+  return { data, skipped };
+}
+
 /** Problems with the raw block that the parsed data cannot tell you about. */
 export function checkPropertyText(raw: string): PropertyIssue[] {
   const issues: PropertyIssue[] = [];
@@ -147,6 +254,15 @@ export function checkPropertyText(raw: string): PropertyIssue[] {
     if (!match) continue;
     const key = match[1].trim();
     seen.set(key, (seen.get(key) || 0) + 1);
+    // "Property names are separated from their values by a colon followed by a space."
+    // Without the space the line is a plain YAML scalar, so Obsidian sees no property.
+    if (line.charAt(match[0].length) !== " " && line.charAt(match[0].length) !== "") {
+      issues.push({
+        level: "warn",
+        key,
+        message: "Obsidian writes a property as “" + key + ": value” — with the space after the colon. Without it the line is not a property at all.",
+      });
+    }
   }
   for (const [key, count] of seen) {
     if (count > 1) {
@@ -156,6 +272,75 @@ export function checkPropertyText(raw: string): PropertyIssue[] {
         message: "The property “" + key + "” is declared " + count + " times — YAML keeps the last one and silently drops the rest.",
       });
     }
+  }
+  return issues;
+}
+
+/** The doc's words for a value shape, for messages a user reads. */
+function kindLabel(kind: PropertyKind): string {
+  if (kind === "list") return "a list";
+  if (kind === "number") return "a number";
+  if (kind === "checkbox") return "a checkbox";
+  if (kind === "date") return "a date";
+  if (kind === "datetime") return "a date and time";
+  if (kind === "empty") return "empty";
+  return "text";
+}
+
+/** The vault's type name for a key, in the vocabulary of this module. */
+function vaultKind(vaultType: string): PropertyKind | null {
+  if (vaultType === "list") return "list";
+  if (vaultType === "date") return "date";
+  if (vaultType === "number") return "number";
+  if (vaultType === "boolean") return "checkbox";
+  if (vaultType === "text") return "text";
+  return null;
+}
+
+/**
+ * "Once a property type is assigned to a property name, all properties with that name across
+ * your vault will use the same type." So a note that reuses one of the vault's property names
+ * with a different shape gets the wrong type in the properties panel — and, worse, the panel
+ * may then show it as the vault's type. Worth saying before the note is written.
+ */
+export type KnownPropertyTypes = Record<string, string>;
+
+/** The vault's type for each property name it already uses, keyed in lower case. */
+export function vaultTypeMap(conventions: VaultConventions | null): KnownPropertyTypes {
+  const known: KnownPropertyTypes = {};
+  if (!conventions || !Array.isArray(conventions.keys)) return known;
+  for (const info of conventions.keys) {
+    if (!info || typeof info.key !== "string") continue;
+    const type = info.types && info.types[0] ? info.types[0] : "";
+    if (type) known[info.key.trim().toLowerCase()] = type;
+  }
+  return known;
+}
+
+export function vaultTypeIssues(
+  data: Record<string, unknown> | null,
+  conventions: VaultConventions | null
+): PropertyIssue[] {
+  const issues: PropertyIssue[] = [];
+  if (!data) return issues;
+  const known = new Map<string, string>();
+  for (const [key, type] of Object.entries(vaultTypeMap(conventions))) known.set(key, type);
+  if (known.size === 0) return issues;
+  for (const [key, value] of Object.entries(data)) {
+    const vaultType = known.get(key.trim().toLowerCase());
+    if (!vaultType) continue;
+    const expected = vaultKind(vaultType);
+    const actual = propertyKind(value);
+    if (!expected || actual === "empty" || actual === "unsupported") continue;
+    const matches = expected === actual || (expected === "date" && actual === "datetime");
+    if (matches) continue;
+    issues.push({
+      level: "warn",
+      key,
+      message:
+        "This vault already uses “" + key + "” as " + kindLabel(expected) + " property, but this value is " + kindLabel(actual) +
+        ". Obsidian keeps one type per property name across the whole vault, so it would show as " + kindLabel(expected) + " — match the vault or use another name.",
+    });
   }
   return issues;
 }
@@ -171,6 +356,13 @@ export function checkProperties(data: Record<string, unknown> | null): PropertyI
   if (!data) return issues;
   for (const [key, value] of Object.entries(data)) {
     const trimmed = key.trim();
+    if (DEPRECATED_KEYS[trimmed.toLowerCase()]) {
+      issues.push({
+        level: "warn",
+        key: trimmed,
+        message: "“" + trimmed + "” was deprecated in Obsidian 1.4 and support as a default property was dropped in 1.9 — use “" + DEPRECATED_KEYS[trimmed.toLowerCase()] + "”.",
+      });
+    }
     if (trimmed.length === 0) {
       issues.push({ level: "warn", message: "A property has an empty name, which Obsidian cannot store." });
       continue;
@@ -205,20 +397,28 @@ export function checkProperties(data: Record<string, unknown> | null): PropertyI
           issues.push({ level: "info", key, message: "The list property “" + key + "” has an empty entry, which Obsidian shows as a blank row." });
         }
       }
-      if (LIST_PROPERTY_KEYS.indexOf(key.toLowerCase()) >= 0) {
+      if (TAG_KEYS.indexOf(key.toLowerCase()) >= 0) {
         for (const entry of value) {
-          const text = typeof entry === "string" ? entry : "";
-          if (text.startsWith("#")) {
-            issues.push({ level: "info", key, message: "Tags in properties are written without “#” — Obsidian adds it when rendering." });
-            break;
+          const tag = typeof entry === "string" ? entry.trim() : "";
+          if (tag === "") continue;
+          if (tag.charAt(0) === "#") {
+            issues.push({ level: "info", key, message: "Tags in the tags property are written without “#” — Obsidian adds it when rendering." });
           }
-        }
-        for (const entry of value) {
-          if (typeof entry === "string" && /\s/.test(entry.trim()) && key.toLowerCase().indexOf("tag") >= 0) {
+          if (/\s/.test(tag)) {
             issues.push({
               level: "warn",
               key,
-              message: "The tag “" + entry.trim() + "” contains a space — Obsidian splits tags on spaces. Use “" + entry.trim().replace(/\s+/g, "-") + "” or nesting (“a/b”).",
+              message: "The tag “" + tag + "” contains a space, which Obsidian splits on. Use “" + tag.replace(/\s+/g, "-") + "” or nesting (“a/b”).",
+            });
+          }
+          if (tag.indexOf(",") >= 0) {
+            issues.push({ level: "warn", key, message: "The tag “" + tag + "” contains a comma — each tag belongs on its own “- value” line." });
+          }
+          if (NUMERIC_ONLY_TAG.test(tag.replace(/^#+/, ""))) {
+            issues.push({
+              level: "warn",
+              key,
+              message: "“" + tag.replace(/^#+/, "") + "” is all digits, and a tag needs at least one non-numeric character — Obsidian does not accept it.",
             });
           }
         }
@@ -236,11 +436,26 @@ export function checkProperties(data: Record<string, unknown> | null): PropertyI
     }
 
     if (typeof value === "string") {
+      if (isDateTime(value) && !DATE_TIME_CANONICAL.test(value.trim())) {
+        issues.push({
+          level: "info",
+          key,
+          message: "Obsidian stores a Date & time as YYYY-MM-DDTHH:MM:SS — “" + value.trim() + "” is missing the seconds.",
+        });
+      }
+      if (!TAG_KEYS.concat(LIST_PROPERTY_KEYS).includes(key.toLowerCase()) && /(^|\s)#[^\s#]+/.test(value)) {
+        // "Hashtags do not create tags when used in text properties."
+        issues.push({
+          level: "info",
+          key,
+          message: "A hashtag inside a text property is only text — Obsidian creates tags from the tags property or from a #tag in the note body.",
+        });
+      }
       if (looksLikeWrongDate(value)) {
         issues.push({
           level: "warn",
           key,
-          message: "“" + value.trim() + "” is not a date Obsidian recognises — use YYYY-MM-DD (or YYYY-MM-DDTHH:MM) so it becomes a Date property instead of text.",
+          message: "“" + value.trim() + "” is not a date Obsidian recognises — use YYYY-MM-DD for a Date, or YYYY-MM-DDTHH:MM:SS for a Date & time.",
         });
       }
       if (LIST_PROPERTY_KEYS.indexOf(key.toLowerCase()) >= 0 && value.indexOf(",") >= 0) {
@@ -269,7 +484,10 @@ export function checkProperties(data: Record<string, unknown> | null): PropertyI
  * Repairs the shapes Obsidian cannot store, without changing what the values mean.
  * Returns the fixed object plus a human list of what changed.
  */
-export function normalizeProperties(data: Record<string, unknown> | null): {
+export function normalizeProperties(
+  data: Record<string, unknown> | null,
+  knownTypes: KnownPropertyTypes = {}
+): {
   data: Record<string, unknown> | null;
   fixes: string[];
 } {
@@ -292,6 +510,21 @@ export function normalizeProperties(data: Record<string, unknown> | null): {
         continue;
       }
     }
+    // `tag`/`alias`/`cssclass` are dead letters since Obsidian 1.9: rename them, keeping
+    // values that are already there under the modern name.
+    const modern = DEPRECATED_KEYS[name.toLowerCase()];
+    if (modern && modern !== name) {
+      const existing = out[modern];
+      if (existing === undefined) {
+        fixes.push("renamed “" + name + "” to “" + modern + "” (the old name was deprecated in Obsidian 1.4)");
+        name = modern;
+      } else {
+        const merged = mergeListValues(existing, value);
+        out[modern] = merged;
+        fixes.push("merged the deprecated “" + name + "” into “" + modern + "”");
+        continue;
+      }
+    }
     const plainObject = value !== null && typeof value === "object" && !(value instanceof Date) && !Array.isArray(value);
     if (plainObject) {
       // Obsidian shows an object as an invalid value; dropping the key is kinder than
@@ -299,15 +532,40 @@ export function normalizeProperties(data: Record<string, unknown> | null): {
       fixes.push("dropped the object property “" + name + "” (unsupported in Obsidian)");
       continue;
     }
+    const vaultType = knownTypes[name.toLowerCase()];
     if (Object.prototype.hasOwnProperty.call(out, name)) {
-      fixes.push("removed a duplicate “" + name + "”");
+      const previous = out[name];
+      const cleaned = normalizeValue(name, value, fixes, vaultType);
+      if (Array.isArray(previous) || Array.isArray(cleaned)) {
+        out[name] = mergeListValues(previous, cleaned);
+        fixes.push("merged the repeated “" + name + "” instead of dropping a value");
+      } else {
+        out[name] = cleaned;
+        fixes.push("kept the last “" + name + "” (it is declared twice; YAML would too)");
+      }
+      continue;
     }
-    out[name] = normalizeValue(name, value, fixes);
+    out[name] = normalizeValue(name, value, fixes, vaultType);
   }
   return { data: out, fixes };
 }
 
-function normalizeValue(key: string, value: unknown, fixes: string[]): unknown {
+/** Keeps both values when a deprecated key is merged into its modern name. */
+function mergeListValues(existing: unknown, incoming: unknown): unknown {
+  const left = Array.isArray(existing) ? existing.slice() : [existing];
+  const right = Array.isArray(incoming) ? incoming : [incoming];
+  const merged: unknown[] = [];
+  for (const entry of left.concat(right)) {
+    if (entry === null || entry === undefined) continue;
+    const text = typeof entry === "string" ? entry.trim() : entry;
+    if (text === "") continue;
+    if (merged.some((item) => String(item) === String(text))) continue;
+    merged.push(text);
+  }
+  return merged;
+}
+
+function normalizeValue(key: string, value: unknown, fixes: string[], vaultType = ""): unknown {
   const lower = key.toLowerCase();
   if (typeof value === "string") {
     let text = value.trim();
@@ -316,13 +574,23 @@ function normalizeValue(key: string, value: unknown, fixes: string[]): unknown {
       fixes.push("turned “" + key + "” into a checkbox (" + text.toLowerCase() + ", unquoted)");
       return text.toLowerCase() === "true";
     }
-    if (LIST_PROPERTY_KEYS.indexOf(lower) >= 0 && text.indexOf(",") >= 0) {
+    // The vault already decided this name is a number, so a numeric string is text only by
+    // accident of quoting — make it the number the vault's panel expects.
+    if (vaultType === "number" && NUMERIC_TEXT.test(text)) {
+      fixes.push("made “" + key + "” a number, because this vault uses that name as a number");
+      return Number(text);
+    }
+    if (LIST_PROPERTY_KEYS.indexOf(lower) >= 0 || vaultType === "list") {
+      // tags, aliases and cssclasses are List properties in the documentation, so a bare
+      // value is wrong even without a comma: `cssclass: wide` is a List of one. A name the
+      // vault already uses as a list gets the same treatment.
       const parts = text
         .split(",")
         .map((part) => part.trim())
         .filter((part) => part.length > 0);
-      fixes.push("turned “" + key + "” into a list (" + parts.length + " entries)");
-      return parts.map((part) => (lower.indexOf("tag") >= 0 ? part.replace(/^#+/, "") : part));
+      // Always reported: a bare value on a List-typed key was a Text property before.
+      fixes.push("turned “" + key + "” into a list (" + parts.length + " entr" + (parts.length === 1 ? "y" : "ies") + ")");
+      return parts.map((part) => (TAG_KEYS.indexOf(lower) >= 0 ? part.replace(/^#+/, "") : part));
     }
     return text;
   }
@@ -333,7 +601,7 @@ function normalizeValue(key: string, value: unknown, fixes: string[]): unknown {
       if (typeof entry === "string") {
         let text = entry.trim();
         if (text.length === 0) continue;
-        if (lower.indexOf("tag") >= 0) text = text.replace(/^#+/, "");
+        if (TAG_KEYS.indexOf(lower) >= 0) text = text.replace(/^#+/, "");
         if (entries.indexOf(text) < 0) entries.push(text);
         continue;
       }
@@ -359,8 +627,11 @@ const QUOTED_SCALAR = /^(\s*(?:-\s+)?)([A-Za-z0-9_-]+):\s*'([^']*)'(\s*)$/;
  * YAML for the properties block, with the two date traps undone: date-shaped scalars
  * are emitted **unquoted** (so Obsidian reads a Date) and never as an ISO timestamp.
  */
-export function serializeProperties(data: Record<string, unknown> | null): { text: string; fixes: string[] } {
-  const { data: normalized, fixes } = normalizeProperties(data);
+export function serializeProperties(
+  data: Record<string, unknown> | null,
+  knownTypes: KnownPropertyTypes = {}
+): { text: string; fixes: string[] } {
+  const { data: normalized, fixes } = normalizeProperties(data, knownTypes);
   if (!normalized || Object.keys(normalized).length === 0) return { text: "", fixes };
   let yaml = "";
   try {

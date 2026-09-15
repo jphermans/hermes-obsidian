@@ -38,18 +38,26 @@ Output contract
 
 Properties (frontmatter)
 - Frontmatter, when used, is the first thing in the file: a line containing exactly --- , then YAML, then a closing --- line. Nothing before it, not even a blank line.
-- YAML syntax only: key: value . No tabs, ever. Use two-space indentation.
-- Property names may contain only letters, digits, _ and - . Never a space, never punctuation: write word-count , not "word count".
-- Never repeat a key, and never nest a map or a list of maps under a key — Obsidian shows objects as an invalid value. Use a list of text values instead.
-- Every property value is one of: text, list, number, checkbox, date. Make the shape obvious:
-  - Checkboxes are bare true / false — "true" in quotes is text, not a checkbox.
-  - Numbers are unquoted: 12 , not "12".
-  - Dates are YYYY-MM-DD and datetimes YYYY-MM-DDTHH:MM , both unquoted. A quoted date is text, not a Date property.
-  - Lists are real YAML lists — inline ( tags: [a, b] ) or block ( tags: on its own line, then indented - a lines). Never one comma-separated line: tags: a, b is a single text value.
-  - tags, aliases and cssclasses are always lists, and tag entries carry no # : write project/kitchen , not #project/kitchen . Tags contain no spaces.
-  - A wikilink inside a property is quoted, because [ starts a list: related: then - "[[Note Name]]" .
-  - Quote any text value containing : # [ ] { } or a leading/trailing space, or starting with - ? * & ! | > % @ \` .
-- Reuse the vault's existing property names and casing. Do not invent near-duplicates such as created vs Date.
+- Write each property as name: value — a colon followed by a space. No tabs, ever. Each name appears once in a note.
+- Names may contain only letters, numbers, _ and - . Never a space (write word-count , not "word count"), and never punctuation.
+- Obsidian's property types are Text, List, Number, Checkbox, Date, Date & time and Tags, and they are stored like this:
+  - Text — one line. Markdown is not rendered in it, and a #hashtag inside a text property is plain text, not a tag.
+  - List — one value per line, each on its own line preceded by a hyphen and a space:
+      tags:
+        - journal
+        - personal
+    Never a comma-separated line: tags: a, b is a single text value, not a list. Internal links inside a list must be quoted, because [ starts a list:
+      links:
+        - "[[Note Name]]"
+  - Number — a literal number only, no operators or units: year: 1977 , pie: 3.14 . Unquoted; "1977" is text.
+  - Checkbox — true or false , lowercase and unquoted. An empty value is an indeterminate checkbox, so do not leave a property blank.
+  - Date — YYYY-MM-DD , unquoted, e.g. date: 2020-08-21 . A quoted date is text, not a Date.
+  - Date & time — YYYY-MM-DDTHH:MM:SS , unquoted and with the seconds, e.g. time: 2020-08-21T10:30:00 .
+  - Tags — only the tags property is a Tags property, and it is always a list. Tags carry no # in frontmatter, contain no spaces, and need at least one non-numeric character: project/kitchen is valid, 1984 is not.
+- A property's type belongs to its name across the whole vault: if the vault already uses a name, use the type the vault uses for it.
+- Never nest a map under a property and never repeat a key — Obsidian shows nested values as unsupported. Use a list of text values instead.
+- Quote any text value containing : # [ ] { } or a leading/trailing space, or starting with - ? * & ! | > % @ \` .
+- Reuse the vault's existing property names and casing. Never use the deprecated names tag , alias or cssclass — they were replaced by tags , aliases and cssclasses and are no longer supported.
 
 Headings
 - Exactly one H1 ( # Title ) at the top when the vault does that, then H2 ( ## ) and H3 ( ### ) without skipping levels.

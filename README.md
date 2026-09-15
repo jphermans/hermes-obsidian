@@ -75,7 +75,7 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 
 The setup page is **tabbed** — *Connection · Remote access · Notes · Chat & prompts · Backup & errors · Setup guide* — and remembers the tab you were last on, so no view is a wall of settings. The installed build is a label at the top of every tab.
 
-Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.35** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
+Settings → **Hermes Agent Notes** opens on the setup page, with the installed build as a label at the top — `Hermes Agent Notes` next to a **v0.1.36** badge, and the current connection state beside it. Click the badge to copy the version for a bug report. A BRAT update that has not been reloaded shows up here immediately.
 
 ### 1. Enable the API server on the Hermes host
 
@@ -533,18 +533,28 @@ A model that knows Markdown still gets Obsidian wrong, so the plugin does two th
 
 **It carries the Obsidian format rules** — `---` YAML properties with no tabs, one H1 then H2/H3 without skipping levels, `[[Wikilinks]]` instead of `[path](note.md)`, `[[Note|alias]]`, `[[Note#Heading]]`, `[[Note#^block]]`, `![[embeds]]`, nested `#tag/child`, `> [!note]` callouts, two-space list nesting, `- [ ]` tasks, tables, fenced code with a language, straight quotes, and the file-name characters Obsidian refuses to store.
 
-**Property values are written the way Obsidian reads them**, which is stricter than valid YAML:
+**Property values are written exactly as the [Obsidian documentation](https://help.obsidian.md/properties) defines them** — which is stricter than valid YAML. The rules the plugin follows, and reports when a note breaks them:
 
 | Written | Obsidian sees |
 | --- | --- |
-| `created: 2026-09-14` | a Date |
-| `created: '2026-09-14'` | **text** — quoting a date loses its type, so dates are never quoted |
-| `publish: true` | a checkbox (`"true"` would be text) |
-| `tags:` then `- project` | a list of tags (`tags: project, kitchen` is one text value) |
-| `#project` inside `tags` | the `#` is dropped — Obsidian adds it when rendering |
-| `word-count` | a valid name (`word count` is refused: names allow only letters, digits, `_`, `-`) |
-| `related:` then `- "[[Note]]"` | a link list — the quotes are required, `[` starts a list |
+| `name: value` — colon **and a space** | a property (`name:value` is not one at all) |
+| `created: 2020-08-21` | a Date |
+| `created: '2020-08-21'` | **text** — quoting a date loses its type, so dates are never quoted |
+| `time: 2020-08-21T10:30:00` | a Date & time — the documented stored form, seconds included |
+| `publish: true` | a checkbox (`"true"` is text, and an empty value is an indeterminate checkbox) |
+| `year: 1977`, `pie: 3.14` | a Number — literal, unquoted, no units or operators |
+| `tags:` then `- project` per line | a List (`tags: project, kitchen` is one text value) |
+| `#project` inside `tags` | the `#` is dropped — tags carry no `#` in frontmatter, and `1984` is not a valid tag |
+| `word-count` | a valid name (`word count` is refused: names allow only letters, numbers, `_`, `-`) |
+| `links:` then `- "[[Note]]"` | a link list — the quotes are required, `[` starts a list |
 | a nested map under a key | unsupported, so it is dropped rather than stored broken |
+
+Three further rules from the same page are enforced:
+
+- **Only the `tags` property is a Tags property.** `tag`/`alias`/`cssclass` were deprecated in Obsidian 1.4 and their support was dropped in 1.9, so they are renamed to `tags`/`aliases`/`cssclasses` and their values kept. A key that merely *looks* similar (`tagsx`) is an ordinary list and is left alone.
+- **A property's type belongs to its name across the whole vault.** If your vault uses `year` as a number, a note that says `year: "1977"` is corrected to a number; a name your vault lists becomes a list. When the plugin cannot know, the preview says what the panel will show.
+- **An unparseable block is recovered, not lost.** A single malformed line (say `cssclass:wide` without the space, which makes the whole block a YAML plain scalar) means Obsidian shows *no* properties — and a naive read-then-write would have written the note without them. The block is read line by line instead, the properties are kept, and the preview says how many were recovered.
+
 
 Dates are stored exactly as written, never rewritten as a UTC timestamp (`2026-09-14T00:00:00.000Z`), and `created` uses **your** local date rather than UTC, so a note made at 01:00 in Brussels is not dated yesterday. Every note is checked before it is written: property/word/link counts, balanced `[[ ]]`, `.md` links that should be wikilinks, heading level jumps, tabs in YAML, unparsed frontmatter, illegal file-name characters — plus the property rules above, where the preview says what a save will correct (*"Corrected when saved: turned “tags” into a list; unquoted a date"*) and warns about what it cannot know, such as `due: 14/09/2026`, which it reports as unusable because Obsidian only recognises `YYYY-MM-DD`.
 

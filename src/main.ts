@@ -60,6 +60,7 @@ import {
   unwrapFence,
   writeNote,
 } from "./note-writer";
+import { vaultTypeMap } from "./properties";
 import {
   exportableSettings,
   mergeImportedSettings,
@@ -1158,7 +1159,10 @@ export default class HermesAgentNotesPlugin extends Plugin {
       const existing = splitFrontmatter(existingContent);
       if (incoming.present || existing.present) {
         const merged = mergeFrontmatter(existing.data, incoming.data, { keepExisting: true, mergeLists: true });
-        content = serializeNote(merged, incoming.body);
+        // The vault's own type for a property name is what Obsidian's panel shows, so the
+        // writer honours it: a numeric string for a name the vault counts in numbers becomes
+        // a number, a name the vault lists becomes a list.
+        content = serializeNote(merged, incoming.body, vaultTypeMap(await this.getConventions()));
       }
     }
 
