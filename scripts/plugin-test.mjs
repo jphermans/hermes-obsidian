@@ -622,6 +622,36 @@ await test("the setup page shows one tab at a time and reopens where you left it
   }
 });
 
+// --- the page cannot be blanked by one failing section --------------------
+await test("a section that throws names itself instead of blanking the setup page", async () => {
+  const plugin = await makePlugin();
+  plugin.settings.settingsTab = "backup";
+  plugin.errorLogPath = () => {
+    throw new Error("kaboom");
+  };
+  const tab = new hermes.HermesSettingTab(app, plugin);
+  tab.display();
+  const texts = textOf(tab.containerEl);
+  assert.ok(texts.includes("Keeping your settings"), "the rest of the tab still renders");
+  assert.ok(
+    texts.includes("could not be shown") && texts.includes("Diagnostics"),
+    "the failing part is named on the page"
+  );
+  assert.ok(texts.includes("kaboom"), "the real message is shown, not swallowed");
+});
+
+// --- a plugin whose settings have not loaded yet ---------------------------
+await test("the page says it is still starting instead of throwing", async () => {
+  const plugin = await makePlugin();
+  const real = plugin.settings;
+  plugin.settings = undefined;
+  const tab = new hermes.HermesSettingTab(app, plugin);
+  tab.display();
+  const texts = textOf(tab.containerEl);
+  assert.ok(texts.includes("still starting up"), "the page explains itself");
+  plugin.settings = real;
+});
+
 server.close();
 
 console.log("plugin test: " + passed + " passed, " + failed + " failed");
@@ -630,3 +660,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.log("  ✗ " + failure);
   process.exit(1);
 }
+

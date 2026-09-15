@@ -59,53 +59,88 @@ export class HermesSettingTab extends PluginSettingTab {
     containerEl.empty();
     containerEl.addClass("hermes-settings");
 
-    this.renderVersionLabel(containerEl);
+    // Obsidian opens this pane the moment the tab is clicked. A throw anywhere used to
+    // leave the whole page blank with no clue why, so every part is guarded now: whatever
+    // fails names itself on the page and lands in the error log.
+    this.guard(containerEl, "version label", () => this.renderVersionLabel(containerEl));
+
+    if (!this.plugin.settings) {
+      containerEl.createEl("p", {
+        text: "Hermes Agent Notes is still starting up — this page fills in a moment. Close and reopen it if it stays like this.",
+      });
+      return;
+    }
 
     const known = HermesSettingTab.TABS;
     const wanted = this.plugin.settings.settingsTab || "connection";
     const active = known.some((tab) => tab.id === wanted) ? wanted : "connection";
 
-    const strip = containerEl.createDiv({ cls: "hermes-tabs" });
-    for (const tab of known) {
-      const button = strip.createEl("button", {
-        text: tab.label,
-        cls: tab.id === active ? "hermes-tab is-active" : "hermes-tab",
-      });
-      button.setAttr("aria-selected", tab.id === active ? "true" : "false");
-      button.addEventListener("click", () => {
-        this.plugin.settings.settingsTab = tab.id;
-        void this.plugin.saveSettings();
-        this.display();
-      });
-    }
+    this.guard(containerEl, "tab row", () => {
+      const strip = containerEl.createDiv({ cls: "hermes-tabs" });
+      for (const tab of known) {
+        const button = strip.createEl("button", {
+          text: tab.label,
+          cls: tab.id === active ? "hermes-tab is-active" : "hermes-tab",
+        });
+        button.setAttr("aria-selected", tab.id === active ? "true" : "false");
+        button.addEventListener("click", () => {
+          this.plugin.settings.settingsTab = tab.id;
+          void this.plugin.saveSettings();
+          this.display();
+        });
+      }
+    });
 
     const body = containerEl.createDiv({ cls: "hermes-tab-body" });
     this.renderTab(active, body);
+  }
+
+  /**
+   * Runs one part of the page. A failure is reported in place — with the message — so a
+   * problem in a single section can never make the page look empty.
+   */
+  private guard(parent: HTMLElement, label: string, render: () => void): void {
+    try {
+      render();
+    } catch (error) {
+      const message = describeError(error);
+      try {
+        void this.plugin.logError("Settings — " + label, message).catch(() => undefined);
+      } catch {
+        // The error log itself must never be the reason a page stays empty.
+      }
+      const box = parent.createDiv({ cls: "hermes-callout hermes-callout-warn" });
+      box.createEl("p", { text: "The “" + label + "” part of this page could not be shown: " + message });
+      box.createEl("p", {
+        cls: "setting-item-description",
+        text: "The same message is in the error log — Diagnostics → Show recent errors. Please include it in a bug report.",
+      });
+    }
   }
 
   /** One tab's content. Only the visible tab is built, so the page stays cheap. */
   private renderTab(id: string, el: HTMLElement): void {
     switch (id) {
       case "remote":
-        this.renderRemoteAccess(el);
+        this.guard(el, "Remote access", () => this.renderRemoteAccess(el));
         return;
       case "notes":
-        this.renderNotes(el);
-        this.renderConventions(el);
+        this.guard(el, "Note writing", () => this.renderNotes(el));
+        this.guard(el, "Vault conventions", () => this.renderConventions(el));
         return;
       case "chat":
-        this.renderLibrary(el);
+        this.guard(el, "Chat, prompts and saved setup", () => this.renderLibrary(el));
         return;
       case "backup":
-        this.renderSettingsFile(el);
-        this.renderDiagnostics(el);
+        this.guard(el, "Keeping your settings", () => this.renderSettingsFile(el));
+        this.guard(el, "Diagnostics", () => this.renderDiagnostics(el));
         return;
       case "guide":
-        this.renderGuide(el);
+        this.guard(el, "Setup guide", () => this.renderGuide(el));
         return;
       default:
-        this.renderConnection(el);
-        this.renderPromptTest(el);
+        this.guard(el, "Hermes connection", () => this.renderConnection(el));
+        this.guard(el, "Ask Hermes", () => this.renderPromptTest(el));
     }
   }
 
